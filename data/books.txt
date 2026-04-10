@@ -1,3 +1,6 @@
 F001-01/Fiction/해리포터1권/조앤롤링/RENTED
 F001-02/Fiction/해리포터1권/조앤롤링/AVAILABLE
 S001-01/Science/코스모스/칼세이건/AVAILABLE
+S001-02/Fiction/카테고리불일치/칼세이건/AVAILABLE
+F001-03/Fiction/해리포터3권/조앤롤링/BORROWED
+F001-01/Fiction/도서번호중복/조앤롤링/AVAILABLE
