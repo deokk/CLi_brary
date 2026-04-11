@@ -11,7 +11,7 @@ from src.validator import (
 )
 from src.auth import login, register
 from src.book import search_book, rent_book, return_book, view_book
-from src.admin import add_book, delete_book, modify_book
+from src.admin import add_book, delete_book, edit_book, view_users
 
 def main():
     # 1. 환경 검사
@@ -127,8 +127,8 @@ def main():
             print("원하는 동작에 해당하는 숫자를 입력하세요.")
             print("1. 도서추가")
             print("2. 도서삭제")
-            print("3. 사용자조회")
-            print("4. 대출현황조회")
+            print("3. 도서수정")
+            print("4. 사용자조회")
             print("0. 종료")
             
             choice = input("\n[ADMIN] 한 자리 숫자를 입력하세요: ").strip()
@@ -141,9 +141,9 @@ def main():
             elif choice == "2":
                 delete_book()
             elif choice == "3":
-                print("🛠️ [시스템] '사용자조회' 기능은 현재 구현 중입니다.")
+                edit_book()
             elif choice == "4":
-                print("🛠️ [시스템] '전체 대출현황조회' 기능은 현재 구현 중입니다.")
+                view_users()
             else:
                 print("올바르지 않은 입력입니다.")
 
