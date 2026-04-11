@@ -515,34 +515,3 @@ def view_users() -> None:
         print("옳지 않은 입력입니다. 다시 입력해주세요.")
         print("0을 입력하세요: ", end="")
     print("--------------------------------------------------")
-
-
-# 관리자 프롬프트 메인 루프
-def admin_prompt() -> None:
-    while True:
-        print("\n원하는 동작에 해당하는 숫자를 입력하세요.")
-        print("1.도서추가")
-        print("2.도서삭제")
-        print("3.도서수정")
-        print("4.사용자조회")
-        print("0.종료")
-        cmd = input("[ADMIN]한 자리 숫자를 입력하세요: ").strip()
-
-        if cmd == "1":
-            add_book()
-
-        elif cmd == "2":
-            delete_book()
-
-        elif cmd == "3":
-            edit_book()
-
-        elif cmd == "4":
-            view_users()
-
-        elif cmd == "0":
-            print("CLi_brary 프로그램을 종료합니다.")
-            break
-
-        else:
-            print("옳지 않은 입력입니다. 다시 입력해주세요.")
