@@ -2,7 +2,13 @@
 import sys
 
 # validator에서 validate_date 함수를 추가로 불러옵니다!
-from src.validator import check_environment, validate_date
+from src.validator import (
+    check_environment,
+    get_saved_system_time_str,
+    save_system_time,
+    validate_date,
+    validate_date_not_past,
+)
 from src.auth import login, register
 from src.book import search_book, rent_book, return_book, view_book
 from src.admin import add_book, delete_book, modify_book
@@ -19,22 +25,33 @@ def main():
     print("="*40)
     
     system_date = None
+    saved_system_date = get_saved_system_time_str()
     while True:
+        if saved_system_date:
+            print(f"저장된 system_time 날짜: {saved_system_date}")
+
         date_input = input("현재 날짜를 입력하세요 (YYYY-MM-DD) : ").strip()
-        
-        # 검증 모듈에 날짜 던져서 확인받기
-        if validate_date(date_input):
-            system_date = date_input
-            print(f"✅ 시스템 날짜가 [{system_date}]로 설정되었습니다.")
-            break # 통과하면 무한 루프 탈출
-        else:
+
+        if not validate_date(date_input):
             print("!!! 오류: 날짜 형식이 맞지 않거나 존재하지 않는 날짜입니다. (예: 2026-04-08)")
+            continue
+
+        if not validate_date_not_past(date_input):
+            print("!!! 오류: 입력한 날짜는 저장된 system_time 날짜보다 이전일 수 없습니다.")
+            continue
+
+        if not save_system_time(date_input):
+            print("!!! 오류: system_time.txt에 날짜를 저장하지 못했습니다. 다시 입력해주세요.")
+            continue
+
+        system_date = date_input
+        print(f"시스템 날짜가 [{system_date}]로 설정되었습니다.")
+        break
             
     # 2. 세션 관리 (여기에 system_date도 함께 관리해 주면 아주 좋습니다)
     current_user = {
         "is_logged_in": False,
-        "user_id": None,
-        "role": None 
+        "user_id": None
     }
     
     # 3. 메인 무한 루프
@@ -64,7 +81,6 @@ def main():
                 if login_result:
                     current_user["is_logged_in"] = True
                     current_user["user_id"] = login_result["id"]
-                    current_user["role"] = login_result["role"]
             elif choice == "2":
                 register()
             elif choice == "3":
@@ -75,7 +91,7 @@ def main():
         # --------------------------------------------------
         # 상태 2: 일반 사용자 (학생) 메뉴
         # --------------------------------------------------
-        elif current_user["role"] == '0':
+        elif current_user["user_id"] != "admin":
             print(f"  [{current_user['user_id']}] 님 접속 중 (현재: {system_date})")
             print("="*40)
             print("원하는 동작에 해당하는 숫자를 입력하세요.")
@@ -92,20 +108,20 @@ def main():
                 sys.exit(0)
             elif choice == "1":
                 # 나중에 대출 기능 구현할 때 현재 날짜를 같이 넘겨줘야 합니다.
-                rent_book() 
+                rent_book(current_user["user_id"], system_date) 
             elif choice == "2":
-                return_book()
+                return_book(current_user["user_id"], system_date)
             elif choice == "3":
                 search_book()
             elif choice == "4":
-                view_book()
+                view_book(current_user["user_id"])
             else:
                 print("올바르지 않은 입력입니다.")
 
         # --------------------------------------------------
         # 상태 3: 관리자 (Admin) 메뉴
         # --------------------------------------------------
-        elif current_user["role"] == '1':
+        elif current_user["user_id"] == "admin":
             print(f"  [관리자 모드] 접속 중 (현재: {system_date})")
             print("="*40)
             print("원하는 동작에 해당하는 숫자를 입력하세요.")

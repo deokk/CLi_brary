@@ -274,9 +274,13 @@ def check_environment() -> None:
     # ── 캐시 저장 ──
     _cached_violations = all_violations
 
-    # ── 위반 항목 안내 ──
+    # ── 위반 항목 안내 후 종료 ──
     if all_violations:
-        print("문법 위배 항목이 발견되었습니다.")
+        for item in all_violations:
+            filepath = os.path.join(_DATA_DIR, item.filename)
+            print(f"'{filepath}'가 올바르지 않습니다. 프로그램을 종료합니다.")
+            print(f"- 줄: {item.line_number}, 내용: {item.line_content}")
+        sys.exit(1)
 
 
 def _check_file_fatal(filepath: str, fatal_if_missing: bool) -> None:
@@ -378,11 +382,11 @@ def _check_syntax_users() -> list[ViolationItem]:
             continue
 
         parts = line.split('/')
-        if len(parts) != 4:
+        if len(parts) != 3:
             violations.append(ViolationItem(filename, line_num, line))
             continue
 
-        uid, pw, role, ban = [p.strip() for p in parts]
+        uid, pw, ban = [p.strip() for p in parts]
 
         # 아이디: 9자리 숫자 또는 "admin" (기획서 4.2.1)
         if not (re.fullmatch(r'\d{9}', uid) or uid == "admin"):
@@ -391,11 +395,6 @@ def _check_syntax_users() -> list[ViolationItem]:
 
         # 비밀번호 (기획서 4.2.2)
         if not _is_valid_password(pw):
-            violations.append(ViolationItem(filename, line_num, line))
-            continue
-
-        # 권한: 0(일반) 또는 1(관리자) (기획서 6.2.2)
-        if role not in ("0", "1"):
             violations.append(ViolationItem(filename, line_num, line))
             continue
 
@@ -545,7 +544,7 @@ def _check_semantic_users() -> list[ViolationItem]:
         if not line:
             continue
         parts = line.split('/')
-        if len(parts) != 4:
+        if len(parts) != 3:
             continue  # 문법 오류는 이미 처리됨
         uid = parts[0].strip()
         if uid in seen:
@@ -635,7 +634,7 @@ def _check_semantic_rentals() -> list[ViolationItem]:
 # ─────────────────────────────────────────────────────────
 
 def _parse_user_ids() -> set[str]:
-    """users.txt 에서 아이디 목록을 파싱한다. (4필드 구조)"""
+    """users.txt 에서 아이디 목록을 파싱한다. (3필드 구조)"""
     ok, lines = _read_lines(_USERS_FILE)
     if not ok:
         return set()
@@ -645,7 +644,7 @@ def _parse_user_ids() -> set[str]:
         if not line:
             continue
         parts = line.split('/')
-        if len(parts) == 4:
+        if len(parts) == 3:
             result.add(parts[0].strip())
     return result
 
