@@ -167,6 +167,38 @@ def _next_book_id(category_code: str, books: list[dict]) -> str | None:
         return None
     return f"{category_code}{new_code:03d}-01"
 
+
+def _generate_book_id_for_info(
+    
+    # category/title/author가 같은 책이 있으면 복본 번호를,
+    # 없으면 도서 추가 규칙에 따라 새 도서 번호를 생성한다.
+
+    category: str,
+    title: str,
+    author: str,
+    books: list[dict],
+    exclude_id: str | None = None,
+) -> tuple[str | None, bool]:
+    category_code = _CODE_CATEGORY_MAP[category]
+    comparable_books = [book for book in books if book["id"] != exclude_id]
+
+    existing = next(
+        (
+            book for book in comparable_books
+            if book["category"] == category
+            and book["title"] == title
+            and book["author"] == author
+        ),
+        None
+    )
+
+    if existing is not None:
+        book_code_3 = existing["id"][1:4]
+        return _next_copy_id(category_code, book_code_3, books), True
+
+    return _next_book_id(category_code, books), False    
+
+
 def _next_copy_id(category_code: str, book_code_3: str, books: list[dict]) -> str | None:
     """
     동일 도서(카테고리코드+3자리코드 동일)의 새 복본 번호를 반환. (4.3.1)
@@ -397,6 +429,13 @@ def edit_book() -> None:
         field_num = field_input
         break
 
+    updated_category = target["category"]
+    updated_title = target["title"]
+    updated_author = target["author"]
+    old_id = target["id"]
+
+
+
     # 새 값 입력
     if field_num == "1":
         new_value = input("[카테고리]수정할 정보를 입력하세요: ").strip()
@@ -411,6 +450,9 @@ def edit_book() -> None:
             print("현재와 동일한 카테고리입니다.")
             print("--------------------------------------------------")
             return
+
+        old_value = target["category"]
+        updated_category = new_value
         
         # 새 카테고리에서 동일 제목+저자 도서 존재 여부 확인 (복본 or 신규)
         existing = next(
@@ -437,9 +479,7 @@ def edit_book() -> None:
                 return
         
         old_value = target["category"]
-        books[target_idx]["category"] = new_value
-        books[target_idx]["id"] = new_id
-        old_id = target["id"]        
+        updated_category = new_value      
 
     elif field_num == "2":
         new_value = input("[제목]수정할 정보를 입력하세요: ").strip()
@@ -448,8 +488,10 @@ def edit_book() -> None:
             print("(최대 32자, 한글/알파벳/숫자/공백만 허용, 앞뒤 공백 불가)")
             print("--------------------------------------------------")
             return
+        
         old_value = target["title"]
-        books[target_idx]["title"] = new_value
+        updated_title = new_value
+
 
     else:
         new_value = input("[저자]수정할 정보를 입력하세요: ").strip()
@@ -458,8 +500,28 @@ def edit_book() -> None:
             print("(최대 32자, 한글/알파벳/숫자/공백/() 만 허용, 앞뒤 공백 불가)")
             print("--------------------------------------------------")
             return
+        
         old_value = target["author"]
-        books[target_idx]["author"] = new_value
+        updated_author = new_value
+
+    
+    new_id, is_copy = _generate_book_id_for_info(
+        updated_category,
+        updated_title,
+        updated_author,
+        books,
+        exclude_id=old_id,
+    )
+    if new_id is None:
+        print("오류: 도서번호를 생성할 수 없습니다.")
+        print("--------------------------------------------------")
+        return
+
+    books[target_idx]["category"] = updated_category
+    books[target_idx]["title"] = updated_title
+    books[target_idx]["author"] = updated_author
+    books[target_idx]["id"] = new_id
+
 
     if not _save_books(books):
         print("오류: 도서 파일 저장에 실패했습니다.")
@@ -467,7 +529,7 @@ def edit_book() -> None:
         return
 
     # 카테고리 변경 시 도서번호도 함께 출력
-    if field_num == "1":
+    if old_id != new_id:
         rentals = _get_rentals()
         for r in rentals:
             if r["book_id"] == old_id:
