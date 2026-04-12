@@ -1,54 +1,119 @@
-# src/auth.py
+from pathlib import Path
 
-# src/auth.py
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT_DIR / "data"
+USERS_FILE = DATA_DIR / "users.txt"
+
+
+def load_users() -> dict[str, tuple[str, str]]:
+    users: dict[str, tuple[str, str]] = {}
+
+    if not USERS_FILE.exists():
+        return users
+
+    with open(USERS_FILE, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            parts = line.split("/")
+            if len(parts) != 3:
+                continue
+
+            user_id, password, ban_until = parts
+            users[user_id] = (password, ban_until)
+
+    return users
+
 
 def login() -> dict | bool:
-    """
-    [1차 구현용 로그인] 
-    - 텍스트 파일 연동 없이 아이디(ID)의 형태로만 권한을 구분합니다.
-    - 'admin' 입력 시 -> 관리자(1)
-    - 9자리 숫자 입력 시 -> 학생(0)
-    """
-    print("\n--------------------------------------------------")
+    print("\n" + "-" * 50)
     print("[시스템] 로그인 메뉴로 진입했습니다.")
-    print("--------------------------------------------------")
-    
-    user_id = input("학번(또는 admin)을 입력하세요: ").strip()
-    password = input("비밀번호를 입력하세요: ").strip()
-    
-    # 1. 관리자 구분 로직
-    if user_id == "admin":
-        if password == "admin": # 임시 비밀번호
-            print("👑 관리자 계정으로 로그인 성공!")
-            return {"id": user_id, "role": "1"}
-        else:
-            print("!!! 오류: 비밀번호가 일치하지 않습니다.")
-            return False
-            
-    # 2. 일반 학생 구분 로직 (9자리 숫자)
-    elif len(user_id) == 9 and user_id.isdigit():
-        # 1차 테스트이므로 9자리 숫자를 치면 무조건 해당 학번으로 로그인 성공 처리
-        print(f"👤 {user_id} 학생으로 로그인 성공!")
-        return {"id": user_id, "role": "0"}
-        
-    # 3. 규격에 맞지 않는 아이디를 친 경우
-    else:
-        print("!!! 오류: 아이디 형식이 올바르지 않습니다. (학번 9자리 또는 admin)")
+    print("-" * 50)
+
+    user_id = input("ID를 입력해주세요: ").strip()
+
+    password = input("비밀번호를 입력해주세요: ").strip()
+
+    users = load_users()
+    if user_id not in users:
+        print("ID 혹은 비밀번호가 잘못되었습니다.")
         return False
 
+    saved_password, _ban_until = users[user_id]
+    if password != saved_password:
+        print("ID 혹은 비밀번호가 잘못되었습니다.")
+        return False
 
-def register() -> bool:
-    """회원가입 정보 입력 및 users.txt에 새 레코드 생성"""
-    print("\n--------------------------------------------------")
-    print("🛠️ [시스템] '회원가입' 기능은 현재 구현 중입니다.")
-    print("--------------------------------------------------")
-    return True
+    # 1. 관리자 로그인    
+    if user_id == "admin":
+        print("관리자 계정으로 로그인 성공!")
+        return {"id": user_id, "role": "1"}
+    
+    # 2. 학생 로그인 (9자리 숫자)
+    print(f"{user_id} 학생으로 로그인 성공!")
+    return {"id": user_id, "role": "0"}
 
 
+def register() -> None:
+    print("\n" + "-" * 50)
+    print("[시스템] 회원가입 메뉴로 진입했습니다.")
+    print("-" * 50)
 
-def register() -> bool:
-    """회원가입 정보 입력 및 users.txt에 새 레코드 생성"""
-    print("\n--------------------------------------------------")
-    print("🛠️ [시스템] '회원가입(users.txt에 생성)' 기능은 현재 구현 중입니다.")
-    print("--------------------------------------------------")
-    return True
+    path_users = USERS_FILE
+    path_users.parent.mkdir(parents=True, exist_ok=True)
+
+    while True:
+        user_id = input("ID를 설정해주세요 (본인의 학번): ").strip()
+
+        if not (len(user_id) == 9 and user_id.isdigit()):
+            print("ID의 형식이 올바르지 않습니다.")
+            continue
+
+        existing_ids = load_users().keys()
+        if user_id in existing_ids:
+            print("이미 등록된 ID입니다.")
+            continue
+
+        break
+
+    allowed_special = set("!@#")
+
+    while True:
+        password = input("비밀번호를 설정해주세요 (숫자+문자+특수기호 !@#의 조합): ").strip()
+
+        has_digit = any(c.isdigit() for c in password)
+        has_alpha = any(c.isascii() and c.isalpha() for c in password)
+        has_special = any(c in allowed_special for c in password)
+        has_invalid = any(
+            (not c.isdigit()) and (not c.isalpha()) and (c not in allowed_special)
+            for c in password
+        )
+        is_valid_length = 8 <= len(password) <= 16
+        has_triple = any(
+            password[i] == password[i + 1] == password[i + 2]
+            for i in range(len(password) - 2)
+        )
+
+        if has_triple:
+            print("비밀번호의 형식이 올바르지 않습니다.")
+            continue
+
+        if not is_valid_length or not has_digit or not has_alpha or not has_special or has_invalid:
+            print("비밀번호의 형식이 올바르지 않습니다.")
+            continue
+
+        break
+    # ───────완료 메시지 출력 ─────────────────────────
+    print("\n회원가입을 완료했습니다!")
+    print(f"  ID       : {user_id}")
+    print(f"  비밀번호 : {password}")
+
+    existing_content = path_users.read_text(encoding="utf-8").strip() if path_users.exists() else ""
+
+    with open(path_users, "a", encoding="utf-8") as f:
+        if existing_content:
+            f.write("\n")
+        f.write(f"{user_id}/{password}/NONE")

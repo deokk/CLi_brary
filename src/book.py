@@ -110,6 +110,7 @@ def rent_book(id, date):
                 frentals2.write("\n")
             frentals2.write(new_line)
 
+        print(f"[도서번호] {book}")
         print("도서 대여가 완료되었습니다.")
         print("--------------------------------------------------")
         return
@@ -215,8 +216,10 @@ def return_book(id, date):
             with pathusers.open("w", encoding="utf-8") as fusers2:
                 fusers2.write("\n".join(updated_users) + "\n")
 
+            print(f"[도서번호] {book}")
             print(f"도서 반납이 완료되었습니다. 대출정지 종료일은 [{ban_date_str}]입니다.")
         else:
+            print(f"[도서번호] {book}")
             print("도서 반납이 완료되었습니다.")
         return
 

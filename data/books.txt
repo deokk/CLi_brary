@@ -1,6 +1,8 @@
 F001-01/Fiction/해리포터1권/조앤롤링/RENTED
 F001-02/Fiction/해리포터1권/조앤롤링/AVAILABLE
 S001-01/Science/코스모스/칼세이건/AVAILABLE
-S001-02/Fiction/카테고리불일치/칼세이건/AVAILABLE
-F001-03/Fiction/해리포터3권/조앤롤링/BORROWED
-F001-01/Fiction/도서번호중복/조앤롤링/AVAILABLE
+F002-01/Fiction/해리포터2권/조앤롤링/AVAILABLE
+S002-01/Science/해리포터사이언스/정창훈/AVAILABLE
+G001-01/General/코스미안/전승선/AVAILABLE
+S003-01/Science/이기적유전자/리처드 도킨스/AVAILABLE
+G002-01/General/0페이지책/봄로야/RENTED
