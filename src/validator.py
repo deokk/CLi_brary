@@ -363,12 +363,10 @@ def _check_syntax_system_time() -> list[ViolationItem]:
 
 def _check_syntax_users() -> list[ViolationItem]:
     """
-    users.txt 문법 규칙 (기획서 5.1.1 + 6.2.2)
-    레코드 형식: <ID>/<비밀번호>/<권한>/<대출정지_종료일> (4필드)
+    users.txt 문법 규칙 (기획서 5.1.1)
+    레코드 형식: <ID>/<비밀번호>/<대출정지_종료일> (3필드)
 
-    기획서 5.1.1 본문에는 3필드로 기재되어 있으나,
-    6.2.2 로그인 절에서 "관리자 여부 필드(0/1)"를 명시하므로
-    권한 필드를 포함한 4필드로 구현한다.
+    관리자 여부는 ID가 "admin"인지로 판별한다. (기획서 4.2.1)
     """
     filename = "users.txt"
     ok, lines = _read_lines(_USERS_FILE)
