@@ -24,7 +24,6 @@ def prompt_system_date() -> str:
             print(f"저장된 system_time 날짜: {saved_system_date}")
 
         date_input = input("현재 날짜를 입력하세요 (YYYY-MM-DD): ").strip()
-
         if not validate_date(date_input):
             print("오류: 올바른 날짜 형식이 아니거나 존재하지 않는 날짜입니다. 예) 2026-03-01")
             continue
@@ -49,7 +48,7 @@ def show_guest_menu(system_date: str) -> str:
     print("2. 회원가입")
     print("3. 도서 검색")
     print("0. 종료")
-    return input("\n메뉴 번호를 입력하세요: ").strip()
+    return input("\n한자리리 숫자를 입력하세요: ").strip()
 
 
 def show_user_menu(user_id: str, system_date: str) -> str:
@@ -61,7 +60,7 @@ def show_user_menu(user_id: str, system_date: str) -> str:
     print("3. 도서 검색")
     print("4. 대출 현황")
     print("0. 종료")
-    return input(f"\n[{user_id}] 메뉴 번호를 입력하세요: ").strip()
+    return input(f"\n[{user_id}] 한자리 숫자를 입력하세요: ").strip()
 
 
 def show_admin_menu(system_date: str) -> str:
@@ -74,7 +73,7 @@ def show_admin_menu(system_date: str) -> str:
     print("4. 사용자 조회")
     print("5. 도서 검색")
     print("0. 종료")
-    return input("\n[ADMIN] 메뉴 번호를 입력하세요: ").strip()
+    return input("\n[ADMIN] 한자리 숫자를 입력하세요: ").strip()
 
 
 def main() -> None:
