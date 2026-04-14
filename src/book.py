@@ -124,8 +124,8 @@ def return_book(id, date):
 
         pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
         if not pattern.fullmatch(book):
-            print("옳지 않은 입력입니다. 다시 입력해주세요.")
-            continue
+            print("옳지 않은 입력입니다.")
+            break
 
         books_lines = load_books()
         rentals_lines = load_rentals()
@@ -142,12 +142,12 @@ def return_book(id, date):
                     book_is_available = True
 
         if not book_is_found:
-            print("존재하지 않는 도서번호입니다. 다시 입력해주세요.")
-            continue
+            print("존재하지 않는 도서번호입니다.")
+            break
 
         if book_is_available:
-            print("대출중인 도서가 아닙니다. 다시 입력해주세요.")
-            continue
+            print("대출중인 도서가 아닙니다.")
+            break
 
         rented_by_other = False
         rented_by_me = False
@@ -162,12 +162,12 @@ def return_book(id, date):
                 rented_by_other = True
 
         if rented_by_other and not rented_by_me:
-            print("내가 대출중인 도서가 아닙니다. 다시 입력해주세요.")
-            continue
+            print("회원님이 대출중인 도서가 아닙니다. ")
+            break
 
         if not rented_by_me:
-            print("대출 기록을 찾을 수 없습니다. 다시 입력해주세요.")
-            continue
+            print("대출 기록을 찾을 수 없습니다.")
+            break
 
         updated_books = []
         for line in books_lines:
