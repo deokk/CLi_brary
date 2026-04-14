@@ -218,6 +218,16 @@ def _next_copy_id(category_code: str, book_code_3: str, books: list[dict]) -> st
         return None
     return f"{category_code}{book_code_3}-{new_copy:02d}"
 
+
+def _has_copies(book: dict, books: list[dict]) -> bool:
+    prefix = book["id"][:4]
+
+    for b in books:
+        if b["id"] != book["id"] and b["id"][:4] == prefix:
+            return True
+    return False
+
+
 # 6.5.1 도서 추가
 def add_book() -> None:
     """
@@ -259,35 +269,13 @@ def add_book() -> None:
         print("--------------------------------------------------")
         return
 
-    category_code = _CODE_CATEGORY_MAP[category]
     books = _get_books()
+    new_id, is_copy = _generate_book_id_for_info(category, title, author, books)
 
-    # ── 동일 도서(카테고리+제목+저자 모두 일치) 존재 여부 확인
-    existing = next(
-        (b for b in books
-         if b["category"] == category
-         and b["title"] == title
-         and b["author"] == author),
-        None
-    )
-
-    if existing is not None:
-        # 복본 추가: 동일 그룹(카테고리코드+3자리코드)에 새 복본 번호 부여
-        book_code_3 = existing["id"][1:4]
-        new_id = _next_copy_id(category_code, book_code_3, books)
-        if new_id is None:
-            print("오류: 해당 도서의 복본 번호가 소진되었습니다. (최대 99권)")
-            print("--------------------------------------------------")
-            return
-        is_copy = True
-    else:
-        # 새 도서 추가: 새 도서코드(3자리) 자동 부여
-        new_id = _next_book_id(category_code, books)
-        if new_id is None:
-            print("오류: 해당 카테고리에 더 이상 도서를 추가할 수 없습니다. (번호 소진)")
-            print("--------------------------------------------------")
-            return
-        is_copy = False
+    if new_id is None:
+        print("오류: 도서번호를 생성할 수 없습니다.")
+        print("--------------------------------------------------")
+        return
 
     new_book = {
         "id": new_id,
@@ -434,9 +422,9 @@ def edit_book() -> None:
     updated_author = target["author"]
     old_id = target["id"]
 
-
-
     # 새 값 입력
+    has_copies = _has_copies(target, books)
+
     if field_num == "1":
         new_value = input("[카테고리]수정할 정보를 입력하세요: ").strip()
         if new_value not in _ALLOWED_CATEGORIES:
@@ -453,33 +441,14 @@ def edit_book() -> None:
 
         old_value = target["category"]
         updated_category = new_value
-        
-        # 새 카테고리에서 동일 제목+저자 도서 존재 여부 확인 (복본 or 신규)
-        existing = next(
-            (b for b in books
-             if b["category"] == new_value
-             and b["title"] == target["title"]
-             and b["author"] == target["author"]),
-            None
+        new_id, is_copy = _generate_book_id_for_info(
+            updated_category,
+            updated_title,
+            updated_author,
+            books,
+            exclude_id=old_id
         )
-        if existing is not None:
-            # 동일 도서가 새 카테고리에 이미 있으면 복본번호
-            book_code_3 = existing["id"][1:4]
-            new_id = _next_copy_id(new_code, book_code_3, books)
-            if new_id is None:
-                print("오류: 해당 도서의 복본 번호가 소진되었습니다. (최대 99권)")
-                print("--------------------------------------------------")
-                return
-        else:
-            # 없으면 새 도서번호
-            new_id = _next_book_id(new_code, books)
-            if new_id is None:
-                print("오류: 해당 카테고리에 더 이상 도서를 추가할 수 없습니다. (번호 소진)")
-                print("--------------------------------------------------")
-                return
         
-        old_value = target["category"]
-        updated_category = new_value      
 
     elif field_num == "2":
         new_value = input("[제목]수정할 정보를 입력하세요: ").strip()
@@ -489,9 +458,25 @@ def edit_book() -> None:
             print("--------------------------------------------------")
             return
         
+        if new_value == target["title"]:
+            print("현재와 동일한 제목입니다.")
+            print("--------------------------------------------------")
+            return
+        
         old_value = target["title"]
         updated_title = new_value
 
+        if has_copies:
+            new_id, is_copy = _generate_book_id_for_info(
+                updated_category,
+                updated_title,
+                updated_author,
+                books,
+                exclude_id=old_id
+            )
+        else:
+            new_id = old_id
+            is_copy = False
 
     else:
         new_value = input("[저자]수정할 정보를 입력하세요: ").strip()
@@ -501,17 +486,28 @@ def edit_book() -> None:
             print("--------------------------------------------------")
             return
         
+        if new_value == target["author"]:
+            print("현재와 동일한 저자입니다.")
+            print("--------------------------------------------------")
+            return
         old_value = target["author"]
         updated_author = new_value
 
+        if has_copies:
+            new_id, is_copy = _generate_book_id_for_info(
+                updated_category,
+                updated_title,
+                updated_author,
+                books,
+                exclude_id=old_id
+            )
+        else:
+            new_id = old_id
+            is_copy = False
+
     
-    new_id, is_copy = _generate_book_id_for_info(
-        updated_category,
-        updated_title,
-        updated_author,
-        books,
-        exclude_id=old_id,
-    )
+    
+    
     if new_id is None:
         print("오류: 도서번호를 생성할 수 없습니다.")
         print("--------------------------------------------------")
@@ -528,20 +524,27 @@ def edit_book() -> None:
         print("--------------------------------------------------")
         return
 
-    # 카테고리 변경 시 도서번호도 함께 출력
     if old_id != new_id:
         rentals = _get_rentals()
         for r in rentals:
             if r["book_id"] == old_id:
                 r["book_id"] = new_id
+
         if not _save_rentals(rentals):
             print("오류: 대출 파일 저장에 실패했습니다.")
             print("--------------------------------------------------")
             return
+        
+    if field_num == "1":
         print(f"카테고리: {old_value} -> {new_value}")
+    elif field_num == "2":
+        print(f"제목: {old_value} -> {new_value}")
+    elif field_num == "3":
+        print(f"저자: {old_value} -> {new_value}")
+    
+    if old_id != new_id:
         print(f"도서번호: {old_id} -> {new_id}")
-    else:
-        print(f"{old_value} -> {new_value}")
+        
     print("수정이 완료되었습니다. 관리자 프롬프트로 이동합니다.")
     print("--------------------------------------------------")
 
