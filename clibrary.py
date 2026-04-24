@@ -48,7 +48,7 @@ def show_guest_menu(system_date: str) -> str:
     print("2. 회원가입")
     print("3. 도서 검색")
     print("0. 종료")
-    return input("\n한자리리 숫자를 입력하세요: ").strip()
+    return input("\n한자리 숫자를 입력하세요: ").strip()
 
 
 def show_user_menu(user_id: str, system_date: str) -> str:
