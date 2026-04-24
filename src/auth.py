@@ -31,46 +31,55 @@ def load_users() -> dict[str, tuple[str, str]]:
 def login() -> dict | bool:
     print("\n" + "-" * 50)
     print("[시스템] 로그인 메뉴로 진입했습니다.")
+    print("[안내] 'q'를 입력하면 언제든지 돌아갈 수 있습니다.")
     print("-" * 50)
 
     user_id = input("ID를 입력해주세요: ").strip()
+    if user_id == "q":
+        return False
 
     password = input("비밀번호를 입력해주세요: ").strip()
+    if password == "q":
+        return False
 
     users = load_users()
     if user_id not in users:
         print("ID 혹은 비밀번호가 잘못되었습니다.")
         return False
 
-    saved_password, _ban_until = users[user_id]
+    saved_password, ban_until = users[user_id]
     if password != saved_password:
         print("ID 혹은 비밀번호가 잘못되었습니다.")
         return False
 
-    # 1. 관리자 로그인    
+    # 1. 관리자 로그인
     if user_id == "admin":
         print("관리자 계정으로 로그인 성공!")
-        return {"id": user_id, "role": "1"}
-    
-    # 2. 학생 로그인 (9자리 숫자)
+        return {"id": user_id}
+
+    # 2. 학생 로그인
     print(f"{user_id} 학생으로 로그인 성공!")
-    return {"id": user_id, "role": "0"}
 
-    # 3. 대출 정지 여부 확인
-    if _ban_until != "NONE":
-        print(f"[안내] 현재 대출 정지 상태입니다. 정지 기한 : {_ban_until} 까지.")
+    if ban_until != "NONE":
+        print(f"[안내] 현재 대출 정지 상태입니다. 정지 기한 : {ban_until} 까지.")
 
+    return {"id": user_id}
 
 def register() -> None:
     print("\n" + "-" * 50)
     print("[시스템] 회원가입 메뉴로 진입했습니다.")
+    print("[안내] 'q'를 입력하면 언제든지 돌아갈 수 있습니다.")
     print("-" * 50)
 
     path_users = USERS_FILE
     path_users.parent.mkdir(parents=True, exist_ok=True)
 
+    # ── 단계 1. ID 입력 ──────────────────────────────────
     while True:
         user_id = input("ID를 설정해주세요 (본인의 학번): ").strip()
+
+        if user_id == "q":
+            return
 
         if not (len(user_id) == 9 and user_id.isdigit()):
             print("ID의 형식이 올바르지 않습니다.")
@@ -83,13 +92,17 @@ def register() -> None:
 
         break
 
+    # ── 단계 2. 비밀번호 입력 ────────────────────────────
     allowed_special = set("!@#")
 
     while True:
         password = input("비밀번호를 설정해주세요.\n\n비밀번호 규칙\n1. 숫자+문자+특수기호 !@#의 조합\n2. 8자 ~ 16자\n3. 연속된 문자 3회 미만\n\n비밀번호 입력: ").strip()
 
-        has_digit = any(c.isascii() and c.isdigit() for c in password)
-        has_alpha = any(c.isascii() and c.isalpha() for c in password)
+        if password == "q":
+            return
+
+        has_digit   = any(c.isascii() and c.isdigit() for c in password)
+        has_alpha   = any(c.isascii() and c.isalpha() for c in password)
         has_special = any(c in allowed_special for c in password)
         has_invalid = any(
             (not c.isdigit()) and (not c.isalpha()) and (c not in allowed_special)
@@ -104,21 +117,19 @@ def register() -> None:
         if has_triple:
             print("같은 문자는 3번 이상 반복될 수 없습니다.")
             continue
-
         if not is_valid_length:
-            print("길이는 8자 이상 16자 이하여아 합니다.")
+            print("길이는 8자 이상 16자 이하여야 합니다.")
             continue
-        
         if not has_digit or not has_alpha or not has_special:
             print("숫자, 알파벳, 특수기호(!@#만 허용)는 각각 최소 1개 이상 포함되어야 합니다.")
             continue
-
         if has_invalid:
             print("허용되지 않은 문자가 포함되었습니다.")
             continue
 
         break
-    # ───────완료 메시지 출력 ─────────────────────────
+
+    # ── 완료 메시지 출력 ─────────────────────────────────
     print("\n회원가입을 완료했습니다!")
     print(f"  ID       : {user_id}")
     print(f"  비밀번호 : {password}")
