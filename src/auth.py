@@ -84,7 +84,7 @@ def register() -> None:
     while True:
         password = input("비밀번호를 설정해주세요 (숫자+문자+특수기호 !@#의 조합): ").strip()
 
-        has_digit = any(c.isdigit() for c in password)
+        has_digit = any(c.isascii() and c.isdigit() for c in password)
         has_alpha = any(c.isascii() and c.isalpha() for c in password)
         has_special = any(c in allowed_special for c in password)
         has_invalid = any(
@@ -98,11 +98,19 @@ def register() -> None:
         )
 
         if has_triple:
-            print("비밀번호의 형식이 올바르지 않습니다.")
+            print("같은 문자는 3번 이상 반복될 수 없습니다.")
             continue
 
-        if not is_valid_length or not has_digit or not has_alpha or not has_special or has_invalid:
-            print("비밀번호의 형식이 올바르지 않습니다.")
+        if not is_valid_length:
+            print("길이는 8자 이상 16자 이하여아 합니다.")
+            continue
+        
+        if not has_digit or not has_alpha or not has_special:
+            print("숫자, 알파벳, 특수기호(!@#만 허용)는 각각 최소 1개 이상 포함되어야 합니다.")
+            continue
+
+        if has_invalid:
+            print("허용되지 않은 문자가 포함되었습니다.")
             continue
 
         break
