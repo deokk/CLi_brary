@@ -1,30 +1,28 @@
 # src/book.py
-from pathlib import Path
+import os
 import re
 from datetime import datetime, timedelta
 
-pathbooks = Path("data") / "books.txt"
-pathrentals = Path("data") / "rentals.txt"
-pathusers = Path("data") / "users.txt"
-
+_ROOT_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DATA_DIR     = os.path.join(_ROOT_DIR, "data")
+_BOOKS_FILE   = os.path.join(_DATA_DIR, "books.txt")
+_USERS_FILE   = os.path.join(_DATA_DIR, "users.txt")
+_RENTALS_FILE = os.path.join(_DATA_DIR, "rentals.txt")
 
 def load_books():
-    with pathbooks.open("a+", encoding="utf-8") as fbooks:
+    with open(_BOOKS_FILE, "a+", encoding="utf-8") as fbooks:
         fbooks.seek(0)
-        return fbooks.read().splitlines()
-
+        return [line for line in fbooks.read().splitlines() if line.strip()]
 
 def load_rentals():
-    with pathrentals.open("a+", encoding="utf-8") as frentals:
+    with open(_RENTALS_FILE, "a+", encoding="utf-8") as frentals:
         frentals.seek(0)
         return [line for line in frentals.read().splitlines() if line.strip()]
 
-
 def load_users():
-    with pathusers.open("a+", encoding="utf-8") as fusers:
+    with open(_USERS_FILE, "a+", encoding="utf-8") as fusers:
         fusers.seek(0)
-        return fusers.read().splitlines()
-
+        return [line for line in fusers.read().splitlines() if line.strip()]
 
 def rent_book(id, date):
     """도서 대여"""
@@ -75,8 +73,25 @@ def rent_book(id, date):
                 continue
             user_id, user_pw, user_ban = parts
             if user_id == id and user_ban != "NONE":
-                print("현재 대출 정지 중입니다. 대출정지 종료일 이후에 시도해주세요.")
-                invalid = True
+                ban_date = datetime.strptime(user_ban, "%Y-%m-%d")
+                current_date = datetime.strptime(date, "%Y-%m-%d")
+                if current_date <= ban_date:
+                    print("현재 대출 정지 중입니다. 대출정지 종료일 이후에 시도해주세요.")
+                    invalid = True
+                else:
+                    updated_users = []
+                    for uline in users_lines:
+                        u_parts = uline.split("/")
+                        if len(u_parts) != 3:
+                            continue
+                        u_id, u_pw, u_ban = u_parts
+                        if u_id == id:
+                            u_ban = "NONE"
+                        updated_users.append(f"{u_id}/{u_pw}/{u_ban}")
+
+                    with open(_USERS_FILE,"w", encoding="utf-8") as fusers2:
+                        fusers2.write("\n".join(updated_users) + "\n")
+
 
         if invalid:
             print("옳지 않은 입력입니다. 다시 입력해주세요.")
@@ -89,7 +104,7 @@ def rent_book(id, date):
                 status = "RENTED"
             updated_books.append(f"{book_id}/{category}/{title}/{author}/{status}")
 
-        with pathbooks.open("w", encoding="utf-8") as fbooks2:
+        with open(_BOOKS_FILE,"w", encoding="utf-8") as fbooks2:
             fbooks2.write("\n".join(updated_books) + "\n")
 
         max_num = 0
@@ -105,7 +120,7 @@ def rent_book(id, date):
         end_date_str = end_date.strftime("%Y-%m-%d")
         new_line = f"{new_rental_num}/{id}/{book}/{date}/{end_date_str}/NONE"
 
-        with pathrentals.open("a", encoding="utf-8") as frentals2:
+        with open(_RENTALS_FILE,"a", encoding="utf-8") as frentals2:
             if rentals_lines:
                 frentals2.write("\n")
             frentals2.write(new_line)
@@ -176,7 +191,7 @@ def return_book(id, date):
                 status = "AVAILABLE"
             updated_books.append(f"{book_id}/{category}/{title}/{author}/{status}")
 
-        with pathbooks.open("w", encoding="utf-8") as fbooks2:
+        with open(_BOOKS_FILE,"w", encoding="utf-8") as fbooks2:
             fbooks2.write("\n".join(updated_books) + "\n")
 
         updated_rentals = []
@@ -192,7 +207,7 @@ def return_book(id, date):
                 rental_date_return = date
             updated_rentals.append(f"{rental_num}/{rental_user}/{rental_book_id}/{rental_date_start}/{rental_date_end}/{rental_date_return}")
 
-        with pathrentals.open("w", encoding="utf-8") as frentals2:
+        with open(_RENTALS_FILE,"w", encoding="utf-8") as frentals2:
             frentals2.write("\n".join(updated_rentals) + "\n")
 
         end_date = datetime.strptime(datetemp, "%Y-%m-%d")
@@ -213,7 +228,7 @@ def return_book(id, date):
                     user_ban = ban_date_str
                 updated_users.append(f"{user_id}/{user_pw}/{user_ban}")
 
-            with pathusers.open("w", encoding="utf-8") as fusers2:
+            with open(_USERS_FILE,"w", encoding="utf-8") as fusers2:
                 fusers2.write("\n".join(updated_users) + "\n")
 
             print(f"[도서번호] {book}")
@@ -235,13 +250,13 @@ def search_book():
             print("도서 제목은 32글자를 넘을 수 없습니다.")
             book_title_is_invalid = True
 
+        if len(book) == 0:
+            print("빈칸은 입력할 수 없습니다.")
+            book_title_is_invalid = True
+
         invalid_char = re.compile(r"[^a-zA-Z0-9가-힣 ]")
         if invalid_char.search(book):
             print("도서 제목에는 한글, 영문, 숫자, 공백만 입력할 수 있습니다.")
-            book_title_is_invalid = True
-
-        if len(book) == 0:
-            print("빈칸은 입력할 수 없습니다.")
             book_title_is_invalid = True
 
         if book_title_is_invalid:
@@ -275,44 +290,46 @@ def search_book():
                 print("검색 결과가 없습니다.")
 
         temp = input("사용자 프롬프트로 돌아가려면 0을 입력하세요: ").strip()
-        print("--------------------------------------------------")
-        if temp == "0":
-            break
+        while True:
+            if temp == "0":
+                print("--------------------------------------------------")
+                return
+            temp = input("옳지 않은 입력입니다. 다시 입력해주세요.")
 
 
 def view_book(id):
     """내 대출 현황 조회"""
+
+    print("\n--------------------------------------------------")
+    print("[대출 현황]")
+    print("도서번호       제목                          반납예정일")
+    print("--------------------------------------------------")
+
+    found = False
+    rentals_lines = load_rentals()
+    books_lines = load_books()
+
+    for line in rentals_lines:
+        parts = line.split("/")
+        if len(parts) != 6:
+            continue
+        rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
+        if rental_user == id and rental_date_return == "NONE":
+            for line2 in books_lines:
+                book_id, book_category, book_title, book_author, book_status = line2.split("/")
+                if book_id == rental_book_id:
+                    print(book_id + "  " + book_title + "                          " + rental_date_end)
+                    found = True
+
+    if not found:
+        print("검색 결과가 없습니다.")
+    temp = input("사용자 프롬프트로 돌아가려면 0을 입력하세요: ").strip()
     while True:
-        print("\n--------------------------------------------------")
-        print("[대출 현황]")
-        print("도서번호       제목                          반납예정일")
-        print("--------------------------------------------------")
-
-        found = False
-        rentals_lines = load_rentals()
-        books_lines = load_books()
-
-        for line in rentals_lines:
-            parts = line.split("/")
-            if len(parts) != 6:
-                continue
-            rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
-            if rental_user == id and rental_date_return == "NONE":
-                for line2 in books_lines:
-                    book_id, book_category, book_title, book_author, book_status = line2.split("/")
-                    if book_id == rental_book_id:
-                        print(book_id + "  " + book_title + "                          " + rental_date_end)
-                        found = True
-
-        if not found:
-            print("검색 결과가 없습니다.")
-
-        temp = input("사용자 프롬프트로 돌아가려면 0을 입력하세요: ").strip()
-        print("--------------------------------------------------")
         if temp == "0":
             break
-        print("옳지 않은 입력입니다. 다시 입력해주세요.")
+        temp = input("옳지 않은 입력입니다. 다시 입력해주세요.")
+    print("--------------------------------------------------")
 
 
 if __name__ == "__main__":
-    search_book()
+    rent_book("202111111","2026-04-24")
