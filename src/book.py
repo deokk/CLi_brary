@@ -3,6 +3,7 @@ import os
 import re
 from datetime import datetime, timedelta
 
+
 _ROOT_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_DIR     = os.path.join(_ROOT_DIR, "data")
 _BOOKS_FILE   = os.path.join(_DATA_DIR, "books.txt")
@@ -29,7 +30,10 @@ def rent_book(id, date):
     while True:
         print("\n--------------------------------------------------")
         book = input("대출할 도서의 도서번호를 입력하세요: ").strip()
-
+        
+        if book == "q":
+            from clibrary import show_user_menu
+            show_user_menu(user_id: str, system_date: str)
         pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
         if not pattern.fullmatch(book):
             print("옳지 않은 입력입니다. 다시 입력해주세요.")
