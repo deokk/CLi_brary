@@ -56,6 +56,10 @@ def login() -> dict | bool:
     print(f"{user_id} 학생으로 로그인 성공!")
     return {"id": user_id, "role": "0"}
 
+    # 3. 대출 정지 여부 확인
+    if _ban_until != "NONE":
+        print(f"[안내] 현재 대출 정지 상태입니다. 정지 기한 : {_ban_until} 까지.")
+
 
 def register() -> None:
     print("\n" + "-" * 50)
@@ -84,7 +88,7 @@ def register() -> None:
     while True:
         password = input("비밀번호를 설정해주세요.\n\n비밀번호 규칙\n1. 숫자+문자+특수기호 !@#의 조합\n2. 8자 ~ 16자\n3. 연속된 문자 3회 미만\n\n비밀번호 입력: ").strip()
 
-        has_digit = any(c.isdigit() for c in password)
+        has_digit = any(c.isascii() and c.isdigit() for c in password)
         has_alpha = any(c.isascii() and c.isalpha() for c in password)
         has_special = any(c in allowed_special for c in password)
         has_invalid = any(
@@ -98,11 +102,19 @@ def register() -> None:
         )
 
         if has_triple:
-            print("비밀번호의 형식이 올바르지 않습니다.")
+            print("같은 문자는 3번 이상 반복될 수 없습니다.")
             continue
 
-        if not is_valid_length or not has_digit or not has_alpha or not has_special or has_invalid:
-            print("비밀번호의 형식이 올바르지 않습니다.")
+        if not is_valid_length:
+            print("길이는 8자 이상 16자 이하여아 합니다.")
+            continue
+        
+        if not has_digit or not has_alpha or not has_special:
+            print("숫자, 알파벳, 특수기호(!@#만 허용)는 각각 최소 1개 이상 포함되어야 합니다.")
+            continue
+
+        if has_invalid:
+            print("허용되지 않은 문자가 포함되었습니다.")
             continue
 
         break
