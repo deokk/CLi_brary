@@ -56,6 +56,10 @@ def login() -> dict | bool:
     print(f"{user_id} 학생으로 로그인 성공!")
     return {"id": user_id, "role": "0"}
 
+    # 3. 대출 정지 여부 확인
+    if _ban_until != "NONE":
+        print(f"[안내] 현재 대출 정지 상태입니다. 정지 기한 : {_ban_until} 까지.")
+
 
 def register() -> None:
     print("\n" + "-" * 50)
