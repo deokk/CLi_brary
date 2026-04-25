@@ -25,18 +25,74 @@ def load_users():
         fusers.seek(0)
         return [line for line in fusers.read().splitlines() if line.strip()]
 
+
+def update_overdue_ban(id, date):
+    rentals_lines = load_rentals()
+    users_lines = load_users()
+
+    current_date = datetime.strptime(date, "%Y-%m-%d")
+    max_ban_date = None
+
+    for line in rentals_lines:
+        parts = line.split("/")
+        if len(parts) != 6:
+            continue
+
+        rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
+
+        if rental_user == id and rental_date_return == "NONE":
+            due_date = datetime.strptime(rental_date_end, "%Y-%m-%d")
+
+            # 반납예정일이 지난 경우
+            if current_date > due_date:
+                late_days = (current_date - due_date).days
+                ban_date = current_date + timedelta(days=late_days)
+
+                if max_ban_date is None or ban_date > max_ban_date:
+                    max_ban_date = ban_date
+
+    if max_ban_date is None:
+        return
+
+    ban_date_str = max_ban_date.strftime("%Y-%m-%d")
+
+    updated_users = []
+
+    for line in users_lines:
+        parts = line.split("/")
+        if len(parts) != 3:
+            continue
+
+        user_id, user_pw, user_ban = parts
+
+        if user_id == id:
+            if user_ban == "NONE":
+                user_ban = ban_date_str
+            else:
+                old_ban_date = datetime.strptime(user_ban, "%Y-%m-%d")
+                if max_ban_date > old_ban_date:
+                    user_ban = ban_date_str
+
+        updated_users.append(f"{user_id}/{user_pw}/{user_ban}")
+
+    with open(_USERS_FILE, "w", encoding="utf-8") as fusers:
+        fusers.write("\n".join(updated_users) + "\n")
+
 def rent_book(id, date):
     """도서 대여"""
+
+    update_overdue_ban(id,date)
+
+    print("[안내] 'q'를 입력하면 언제든지 돌아갈 수 있습니다.")
     while True:
         print("\n--------------------------------------------------")
         book = input("대출할 도서의 도서번호를 입력하세요: ").strip()
-        
+
         if book == "q":
-            from clibrary import show_user_menu
-            show_user_menu(user_id: str, system_date: str)
+            return
         pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
         if not pattern.fullmatch(book):
-            print("옳지 않은 입력입니다. 다시 입력해주세요.")
+            print("옳지 않은 입력입니다.")
             continue
 
         books_lines = load_books()
