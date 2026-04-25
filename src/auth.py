@@ -96,7 +96,7 @@ def register() -> None:
     allowed_special = set("!@#")
 
     while True:
-        password = input("비밀번호를 설정해주세요.\n\n비밀번호 규칙\n1. 숫자+문자+특수기호 !@#의 조합\n2. 8자 ~ 16자\n3. 연속된 문자 3회 미만\n\n비밀번호 입력: ").strip()
+        password = input("비밀번호를 설정해주세요(숫자+문자+특수기호 !@#의 조합): ").strip()
 
         if password == "0":
             return
