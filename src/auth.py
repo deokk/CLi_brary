@@ -31,16 +31,11 @@ def load_users() -> dict[str, tuple[str, str]]:
 def login() -> dict | bool:
     print("\n" + "-" * 50)
     print("[시스템] 로그인 메뉴로 진입했습니다.")
-    print("[안내] '0'을 입력하면 언제든지 돌아갈 수 있습니다.")
     print("-" * 50)
 
     user_id = input("ID를 입력해주세요: ").strip()
-    if user_id == "0":
-        return False
 
     password = input("비밀번호를 입력해주세요: ").strip()
-    if password == "0":
-        return False
 
     users = load_users()
     if user_id not in users:
