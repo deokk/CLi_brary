@@ -26,6 +26,56 @@ def load_users():
         return [line for line in fusers.read().splitlines() if line.strip()]
 
 
+def sync_overdue_bans(date):
+    rentals_lines = load_rentals()
+    users_lines = load_users()
+
+    current_date = datetime.strptime(date, "%Y-%m-%d")
+    user_max_bans = {}
+
+    for line in rentals_lines:
+        parts = line.split("/")
+        if len(parts) != 6:
+            continue
+
+        _, rental_user, _, _, rental_date_end, rental_date_return = parts
+
+        if rental_date_return != "NONE":
+            continue
+
+        due_date = datetime.strptime(rental_date_end, "%Y-%m-%d")
+        if current_date <= due_date:
+            continue
+
+        late_days = (current_date - due_date).days
+        ban_date = current_date + timedelta(days=late_days)
+
+        saved_ban = user_max_bans.get(rental_user)
+        if saved_ban is None or ban_date > saved_ban:
+            user_max_bans[rental_user] = ban_date
+
+    updated_users = []
+
+    for line in users_lines:
+        parts = line.split("/")
+        if len(parts) != 3:
+            continue
+
+        user_id, user_pw, user_ban = parts
+
+        if user_id in user_max_bans:
+            user_ban = user_max_bans[user_id].strftime("%Y-%m-%d")
+        elif user_ban != "NONE":
+            saved_ban_date = datetime.strptime(user_ban, "%Y-%m-%d")
+            if current_date > saved_ban_date:
+                user_ban = "NONE"
+
+        updated_users.append(f"{user_id}/{user_pw}/{user_ban}")
+
+    with open(_USERS_FILE, "w", encoding="utf-8") as fusers:
+        fusers.write("\n".join(updated_users) + "\n")
+
+
 def update_overdue_ban(id, date):
     rentals_lines = load_rentals()
     users_lines = load_users()
@@ -83,17 +133,14 @@ def rent_book(id, date):
 
     update_overdue_ban(id,date)
 
-    print("[안내] 'q'를 입력하면 언제든지 돌아갈 수 있습니다.")
     while True:
         print("\n--------------------------------------------------")
         book = input("대출할 도서의 도서번호를 입력하세요: ").strip()
 
-        if book == "q":
-            return
         pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
         if not pattern.fullmatch(book):
             print("옳지 않은 입력입니다.")
-            continue
+            return
 
         books_lines = load_books()
         rentals_lines = load_rentals()
@@ -204,7 +251,6 @@ def return_book(id, date):
 
         books_lines = load_books()
         rentals_lines = load_rentals()
-        users_lines = load_users()
 
         book_is_found = False
         book_is_available = False
@@ -270,33 +316,10 @@ def return_book(id, date):
         with open(_RENTALS_FILE,"w", encoding="utf-8") as frentals2:
             frentals2.write("\n".join(updated_rentals) + "\n")
 
-        end_date = datetime.strptime(datetemp, "%Y-%m-%d")
-        return_date = datetime.strptime(date, "%Y-%m-%d")
-        late_days = (return_date - end_date).days
-
-        if late_days > 0:
-            ban_date = return_date + timedelta(days=late_days)
-            ban_date_str = ban_date.strftime("%Y-%m-%d")
-            updated_users = []
-
-            for line in users_lines:
-                parts = line.split("/")
-                if len(parts) != 3:
-                    continue
-                user_id, user_pw, user_ban = parts
-                if user_id == id:
-                    user_ban = ban_date_str
-                updated_users.append(f"{user_id}/{user_pw}/{user_ban}")
-
-            with open(_USERS_FILE,"w", encoding="utf-8") as fusers2:
-                fusers2.write("\n".join(updated_users) + "\n")
-
-            print(f"[도서번호] {book}")
-            print(f"도서 반납이 완료되었습니다. 대출정지 종료일은 [{ban_date_str}]입니다.")
-        else:
-            print(f"[도서번호] {book}")
-            print("도서 반납이 완료되었습니다.")
+        print(f"[도서번호] {book}")
+        print("도서 반납이 완료되었습니다.")
         return
+
 
 
 def search_book():
@@ -389,7 +412,3 @@ def view_book(id):
             break
         temp = input("옳지 않은 입력입니다. 다시 입력해주세요.")
     print("--------------------------------------------------")
-
-
-if __name__ == "__main__":
-    rent_book("202111111","2026-04-24")

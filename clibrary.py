@@ -2,7 +2,7 @@ import sys
 
 from src.admin import add_book, delete_book, edit_book, view_users
 from src.auth import login, register
-from src.book import rent_book, return_book, search_book, view_book
+from src.book import rent_book, return_book, search_book, sync_overdue_bans, view_book
 from src.validator import (
     check_environment,
     get_saved_system_time_str,
@@ -79,6 +79,7 @@ def show_admin_menu(system_date: str) -> str:
 def main() -> None:
     check_environment()
     system_date = prompt_system_date()
+    sync_overdue_bans(system_date)
 
     current_user = {
         "is_logged_in": False,

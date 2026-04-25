@@ -31,15 +31,15 @@ def load_users() -> dict[str, tuple[str, str]]:
 def login() -> dict | bool:
     print("\n" + "-" * 50)
     print("[시스템] 로그인 메뉴로 진입했습니다.")
-    print("[안내] 'q'를 입력하면 언제든지 돌아갈 수 있습니다.")
+    print("[안내] '0'을 입력하면 언제든지 돌아갈 수 있습니다.")
     print("-" * 50)
 
     user_id = input("ID를 입력해주세요: ").strip()
-    if user_id == "q":
+    if user_id == "0":
         return False
 
     password = input("비밀번호를 입력해주세요: ").strip()
-    if password == "q":
+    if password == "0":
         return False
 
     users = load_users()
@@ -68,7 +68,7 @@ def login() -> dict | bool:
 def register() -> None:
     print("\n" + "-" * 50)
     print("[시스템] 회원가입 메뉴로 진입했습니다.")
-    print("[안내] 'q'를 입력하면 언제든지 돌아갈 수 있습니다.")
+    print("[안내] '0'을 입력하면 언제든지 돌아갈 수 있습니다.")
     print("-" * 50)
 
     path_users = USERS_FILE
@@ -78,7 +78,7 @@ def register() -> None:
     while True:
         user_id = input("ID를 설정해주세요 (본인의 학번): ").strip()
 
-        if user_id == "q":
+        if user_id == "0":
             return
 
         if not (len(user_id) == 9 and user_id.isdigit()):
@@ -98,7 +98,7 @@ def register() -> None:
     while True:
         password = input("비밀번호를 설정해주세요.\n\n비밀번호 규칙\n1. 숫자+문자+특수기호 !@#의 조합\n2. 8자 ~ 16자\n3. 연속된 문자 3회 미만\n\n비밀번호 입력: ").strip()
 
-        if password == "q":
+        if password == "0":
             return
 
         has_digit   = any(c.isascii() and c.isdigit() for c in password)
