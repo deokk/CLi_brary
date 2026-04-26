@@ -1,6 +1,7 @@
-# src/book.py
+﻿# src/book.py
 import os
 import re
+import unicodedata
 from datetime import datetime, timedelta
 
 
@@ -25,6 +26,33 @@ def load_users():
         fusers.seek(0)
         return [line for line in fusers.read().splitlines() if line.strip()]
 
+def display_width(text):
+    width = 0
+    for ch in text:
+        if unicodedata.east_asian_width(ch) in ("F", "W"):
+            width += 2
+        else:
+            width += 1
+    return width
+
+def fit_display(text, width):
+    text_width = display_width(text)
+
+    if text_width <= width:
+        return text + (" " * (width - text_width))
+
+    trimmed = ""
+    current_width = 0
+    ellipsis = "..."
+
+    for ch in text:
+        ch_width = 2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+        if current_width + ch_width + len(ellipsis) > width:
+            break
+        trimmed += ch
+        current_width += ch_width
+
+    return trimmed + ellipsis + (" " * (width - current_width - len(ellipsis)))
 
 def sync_overdue_bans(date):
     rentals_lines = load_rentals()
@@ -383,11 +411,18 @@ def search_book():
 def view_book(id):
     """내 대출 현황 조회"""
 
-    print("\n--------------------------------------------------")
+    book_id_width = 11
+    title_width = 50
+    due_date_width = 10
+    print('\n')
+    print("-" * (book_id_width + title_width + due_date_width + 2))
     print("[대출 현황]")
-    print("도서번호       제목                          반납예정일")
-    print("--------------------------------------------------")
-
+    print(
+    f"{fit_display('도서번호', book_id_width)} "
+    f"{fit_display('제목', title_width)} "
+    f"{fit_display('반납예정일', due_date_width)}"
+    )
+    print("-" * (book_id_width + title_width + due_date_width + 2))
     found = False
     rentals_lines = load_rentals()
     books_lines = load_books()
@@ -401,7 +436,11 @@ def view_book(id):
             for line2 in books_lines:
                 book_id, book_category, book_title, book_author, book_status = line2.split("/")
                 if book_id == rental_book_id:
-                    print(book_id + "  " + book_title + "                          " + rental_date_end)
+                    print(
+                        f"{fit_display(book_id, book_id_width)} "
+                        f"{fit_display(book_title, title_width)} "
+                        f"{fit_display(rental_date_end, due_date_width)}"
+                    )
                     found = True
 
     if not found:
