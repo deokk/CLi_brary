@@ -55,23 +55,6 @@ class ViolationItem:
 
 
 # ─────────────────────────────────────────────────────────
-# 모듈 레벨 캐시 (violations 명령어에서 사용)
-# ─────────────────────────────────────────────────────────
-
-_cached_violations: list[ViolationItem] = []
-
-
-def get_cached_violations() -> list[ViolationItem]:
-    """마지막 검사에서 수집된 위반 항목 목록을 반환한다."""
-    return _cached_violations
-
-
-def has_violations() -> bool:
-    """현재 캐시에 위반 항목이 있으면 True를 반환한다."""
-    return len(_cached_violations) > 0
-
-
-# ─────────────────────────────────────────────────────────
 # 내부 유틸리티
 # ─────────────────────────────────────────────────────────
 
@@ -161,14 +144,6 @@ def validate_date(date_str: str) -> bool:
     return _parse_date(date_str) is not None
 
 
-def validate_date_format_only(date_str: str) -> bool:
-    """
-    날짜 형식(YYYY-MM-DD)만 검사한다. 존재 여부는 검사하지 않는다.
-    clibrary.py 에서 두 오류 메세지를 구분하기 위해 사용.
-    """
-    return bool(re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_str))
-
-
 def validate_date_not_past(date_str: str) -> bool:
     """
     입력 날짜가 system_time.txt 의 마지막 기록일보다 이전이 아닌지 검사.
@@ -190,17 +165,12 @@ def get_saved_system_time_str() -> Optional[str]:
     """
     system_time.txt 에 저장된 날짜 문자열을 반환한다.
     clibrary.py 의 날짜 입력 프롬프트에서 마지막 기록일 표시에 사용.
-    저장된 날짜가 없으면 None 반환.
+    저장된 날짜가 없거나 형식이 올바르지 않으면 None 반환.
     """
-    if not os.path.exists(_SYSTIME_FILE):
+    saved = _get_saved_system_time()
+    if saved is None:
         return None
-    ok, lines = _read_lines(_SYSTIME_FILE)
-    if not ok or not lines or not lines[0].strip():
-        return None
-    d = _parse_date(lines[0].strip())
-    if d is None:
-        return None
-    return lines[0].strip()
+    return saved.strftime("%Y-%m-%d")
 
 
 def save_system_time(date_str: str) -> bool:
@@ -218,18 +188,25 @@ def save_system_time(date_str: str) -> bool:
         return False
 
 
+def _exit_with_violations(violations: list[ViolationItem]) -> None:
+    """위반 목록을 출력하고 프로그램을 종료한다."""
+    for item in violations:
+        filepath = os.path.join(_DATA_DIR, item.filename)
+        print(f"'{filepath}'가 올바르지 않습니다. 프로그램을 종료합니다.")
+        print(f"- 줄: {item.line_number}, 내용: {item.line_content}")
+    sys.exit(1)
+
+
 def check_environment() -> None:
     """
     환경 검사 (기획서 5절)
-    - 홈 경로 파악
-    - data/ 폴더 및 4개 파일 존재/권한 확인
-    - 4개 파일의 문법+의미 규칙 위반 항목 수집 → 캐시 저장
-    - fatal 오류 발생 시 즉시 프로그램 종료
-    - 위반 항목은 종료하지 않고 수집만 함 (violations 명령어로 처리)
-    """
-    global _cached_violations
-    all_violations: list[ViolationItem] = []
 
+    - 홈 경로 및 data/ 폴더 확인
+    - 4개 파일 존재/권한 확인
+    - 문법 규칙 + 의미 규칙 검사 (위반 시 종료)
+
+    프로그램 실행 직후에만 호출된다. (기획서 5.1.3 / 5.2.3 / 5.3.3 / 5.4.2)
+    """
     # ── 홈 경로 파악 (기획서 5.1.3 1단계) ──
     if not os.path.exists(_ROOT_DIR):
         print("오류: 홈 경로를 파악할 수 없습니다. 프로그램을 종료합니다.")
@@ -243,44 +220,16 @@ def check_environment() -> None:
             print("오류: 홈 경로를 파악할 수 없습니다. 프로그램을 종료합니다.")
             sys.exit(1)
 
-    # ── system_time.txt (기획서 5.4.2: 없으면 오류 후 종료) ──
-    _check_file_fatal(
-        _SYSTIME_FILE,
-        fatal_if_missing=True
-    )
-
-    # ── users.txt (기획서 5.1.3: 없으면 경고 후 생성) ──
-    _check_file_fatal(
-        _USERS_FILE,
-        fatal_if_missing=False
-    )
-
-    # ── books.txt (기획서 5.2.3: 없으면 경고 후 생성) ──
-    _check_file_fatal(
-        _BOOKS_FILE,
-        fatal_if_missing=False
-    )
-
-    # ── rentals.txt (기획서 5.3.3: 없으면 경고 후 생성) ──
-    _check_file_fatal(
-        _RENTALS_FILE,
-        fatal_if_missing=False
-    )
+    # ── 4개 파일 존재/권한 확인 ──
+    _check_file_fatal(_SYSTIME_FILE, fatal_if_missing=True)
+    _check_file_fatal(_USERS_FILE, fatal_if_missing=False)
+    _check_file_fatal(_BOOKS_FILE, fatal_if_missing=False)
+    _check_file_fatal(_RENTALS_FILE, fatal_if_missing=False)
 
     # ── 문법 + 의미 규칙 검사 ──
-    all_violations += check_syntax_rule()
-    all_violations += check_semantic_rule()
-
-    # ── 캐시 저장 ──
-    _cached_violations = all_violations
-
-    # ── 위반 항목 안내 후 종료 ──
+    all_violations = _check_syntax_rule() + _check_semantic_rule()
     if all_violations:
-        for item in all_violations:
-            filepath = os.path.join(_DATA_DIR, item.filename)
-            print(f"'{filepath}'가 올바르지 않습니다. 프로그램을 종료합니다.")
-            print(f"- 줄: {item.line_number}, 내용: {item.line_content}")
-        sys.exit(1)
+        _exit_with_violations(all_violations)
 
 
 def _check_file_fatal(filepath: str, fatal_if_missing: bool) -> None:
@@ -318,7 +267,7 @@ def _check_file_fatal(filepath: str, fatal_if_missing: bool) -> None:
         sys.exit(1)
 
 
-def check_syntax_rule() -> list[ViolationItem]:
+def _check_syntax_rule() -> list[ViolationItem]:
     """
     문법 규칙 검사 (기획서 5.1.1 / 5.2.1 / 5.3.1 / 5.4)
     위반 항목 목록을 반환한다.
@@ -331,7 +280,7 @@ def check_syntax_rule() -> list[ViolationItem]:
     return violations
 
 
-def check_semantic_rule() -> list[ViolationItem]:
+def _check_semantic_rule() -> list[ViolationItem]:
     """
     의미 규칙 검사 (기획서 5.1.2 / 5.2.2 / 5.3.2)
     위반 항목 목록을 반환한다.
@@ -554,8 +503,11 @@ def _check_semantic_users() -> list[ViolationItem]:
 
 def _check_semantic_books() -> list[ViolationItem]:
     """
-    books.txt 의미 규칙 (기획서 5.2.2)
-    - 같은 도서 ID는 두 개 이상 존재할 수 없다.
+    books.txt 의미 규칙
+    - 5.2.2: 같은 도서 ID는 두 개 이상 존재할 수 없다.
+    - 4.3.1: 같은 prefix(C+333)를 가진 도서들은 같은 도서이므로
+            카테고리/제목/저자가 모두 동일해야 한다.
+            (suffix 22만 다르고, 나머지가 다른 경우는 위반)
     """
     filename = "books.txt"
     ok, lines = _read_lines(_BOOKS_FILE)
@@ -563,21 +515,43 @@ def _check_semantic_books() -> list[ViolationItem]:
         return []
 
     violations = []
-    seen: dict[str, int] = {}
+    seen_id: dict[str, int] = {}
+    # prefix_record: prefix -> (첫 등장 줄번호, 카테고리, 제목, 저자)
+    prefix_record: dict[str, tuple[int, str, str, str]] = {}
+
     for line_num, raw in enumerate(lines, 1):
         line = raw.strip()
         if not line:
             continue
+
         parts = line.split('/')
-        if not parts:
-            continue
+        if len(parts) != 5:
+            continue  # 문법 오류는 이미 처리됨
+
         book_id = parts[0].strip()
+        category = parts[1].strip()
+        title = parts[2].strip()
+        author = parts[3].strip()
+
         if not _is_valid_book_id(book_id):
-            continue
-        if book_id in seen:
+            continue  # 문법 오류는 이미 처리됨
+
+        # 1) 도서 ID 중복 검사 (5.2.2)
+        if book_id in seen_id:
             violations.append(ViolationItem(filename, line_num, line))
+            continue
+        seen_id[book_id] = line_num
+
+        # 2) 동일 prefix(C+333) 일치성 검사 (4.3.1)
+        prefix = book_id[:4]  # 예: 'F001'
+        if prefix in prefix_record:
+            _, prev_category, prev_title, prev_author = prefix_record[prefix]
+            if (category, title, author) != (prev_category, prev_title, prev_author):
+                violations.append(ViolationItem(filename, line_num, line))
+                continue
         else:
-            seen[book_id] = line_num
+            prefix_record[prefix] = (line_num, category, title, author)
+
     return violations
 
 
@@ -661,77 +635,3 @@ def _parse_book_ids() -> set[str]:
         if len(parts) >= 5:
             result.add(parts[0].strip())
     return result
-
-
-# ─────────────────────────────────────────────────────────
-# violations 명령어 지원 함수 (admin.py 에서 호출)
-# ─────────────────────────────────────────────────────────
-
-def delete_violation(index: int) -> bool:
-    """
-    캐시의 index번(1-based) 위반 항목을 파일에서 실제로 삭제한다.
-    성공 시 True, 실패 시 False 반환.
-    """
-    if index < 1 or index > len(_cached_violations):
-        return False
-
-    item = _cached_violations[index - 1]
-    filepath = os.path.join(_DATA_DIR, item.filename)
-
-    ok, lines = _read_lines(filepath)
-    if not ok:
-        return False
-
-    target = item.line_number - 1
-    if not (0 <= target < len(lines)):
-        return False
-
-    lines.pop(target)
-
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write('\n'.join(lines))
-            if lines:
-                f.write('\n')
-    except Exception:
-        return False
-
-    _cached_violations.pop(index - 1)
-
-    for v in _cached_violations:
-        if v.filename == item.filename and v.line_number > item.line_number:
-            v.line_number -= 1
-
-    return True
-
-
-def delete_all_violations() -> bool:
-    """
-    캐시의 모든 위반 항목을 파일에서 실제로 삭제한다.
-    성공 시 True, 실패 시 False 반환.
-    """
-    to_delete: dict[str, set[int]] = {}
-    for item in _cached_violations:
-        to_delete.setdefault(item.filename, set()).add(item.line_number)
-
-    for fname, line_numbers in to_delete.items():
-        filepath = os.path.join(_DATA_DIR, fname)
-        ok, lines = _read_lines(filepath)
-        if not ok:
-            return False
-
-        for ln in sorted(line_numbers, reverse=True):
-            idx = ln - 1
-            if 0 <= idx < len(lines):
-                lines.pop(idx)
-
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write('\n'.join(lines))
-                if lines:
-                    f.write('\n')
-        except Exception:
-            return False
-
-    _cached_violations.clear()
-    return True
