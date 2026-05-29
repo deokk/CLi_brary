@@ -2,7 +2,7 @@ import sys
 
 from src.admin import add_book, delete_book, edit_book, view_users
 from src.auth import login, register
-from src.book import rent_book, return_book, search_book, sync_overdue_bans, view_book
+from src.book import rent_book, return_book, search_book, sync_overdue_bans, view_book, extend_book
 from src.validator import (
     check_environment,
     get_saved_system_time_str,
@@ -59,6 +59,7 @@ def show_user_menu(user_id: str, system_date: str) -> str:
     print("2. 도서 반납")
     print("3. 도서 검색")
     print("4. 대출 현황")
+    print("5. 도서 연장")
     print("0. 종료")
     return input(f"\n[{user_id}] 한자리 숫자를 입력하세요: ").strip()
 
@@ -141,6 +142,8 @@ def main() -> None:
             search_book()
         elif choice == "4":
             view_book(current_user["user_id"])
+        elif choice == "5":
+            extend_book(current_user["user_id"], system_date)
         else:
             print("올바르지 않은 입력입니다.")
 

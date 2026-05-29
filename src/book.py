@@ -451,3 +451,140 @@ def view_book(id):
             break
         temp = input("옳지 않은 입력입니다. 다시 입력해주세요.")
     print("--------------------------------------------------")
+
+def _render_loan_status(id):
+    """대출 현황 표를 출력한다. (도서 연장 부 프롬프트용)"""
+    book_id_width = 11
+    title_width = 50
+    due_date_width = 10
+
+    print("-" * (book_id_width + title_width + due_date_width + 2))
+    print("[대출 현황]")
+    print(
+        f"{fit_display('도서번호', book_id_width)} "
+        f"{fit_display('제목', title_width)} "
+        f"{fit_display('반납예정일', due_date_width)}"
+    )
+    print("-" * (book_id_width + title_width + due_date_width + 2))
+
+    rentals_lines = load_rentals()
+    books_lines = load_books()
+
+    found = False
+    for line in rentals_lines:
+        parts = line.split("/")
+        if len(parts) != 6:
+            continue
+        rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
+        if rental_user == id and rental_date_return == "NONE":
+            for line2 in books_lines:
+                book_parts = line2.split("/")
+                if len(book_parts) >= 5 and book_parts[0] == rental_book_id:
+                    print(
+                        f"{fit_display(rental_book_id, book_id_width)} "
+                        f"{fit_display(book_parts[2], title_width)} "
+                        f"{fit_display(rental_date_end, due_date_width)}"
+                    )
+                    found = True
+
+    if not found:
+        print("대출 중인 도서가 없습니다.")
+
+
+def extend_book(id, date):
+    """대출 기한 연장 (기획서 6.3.5)"""
+
+    # 이용 제한(연체) 상태를 현재 날짜 기준으로 동기화 (rent_book과 동일)
+    update_overdue_ban(id, date)
+
+    current_date = datetime.strptime(date, "%Y-%m-%d")
+    pattern = re.compile(r"^[0-9]{6}-[0-9]{2}$")
+
+    print("\n--------------------------------------------------")
+    _render_loan_status(id)
+
+    while True:
+        book = input("연장할 도서의 도서번호를 입력하세요 (뒤로가려면 0): ").strip()
+
+        # 0 입력 시 회원 프롬프트로 복귀
+        if book == "0":
+            print("--------------------------------------------------")
+            return
+
+        # 문법 규칙: 도서번호 형식 위반
+        if not pattern.fullmatch(book):
+            print("옳지 않은 입력입니다. 다시 입력해주세요.")
+            continue
+
+        rentals_lines = load_rentals()
+        books_lines = load_books()
+
+        # 의미 규칙 1: 본인이 현재 대출 중인 도서여야 한다.
+        target_parts = None
+        for line in rentals_lines:
+            parts = line.split("/")
+            if len(parts) != 6:
+                continue
+            rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
+            if rental_book_id == book and rental_user == id and rental_date_return == "NONE":
+                target_parts = parts
+                break
+
+        if target_parts is None:
+            print("대여가 불가능합니다.")
+            continue
+
+        target_num, target_user, target_book, target_start, target_end, target_return = target_parts
+        rent_date = datetime.strptime(target_start, "%Y-%m-%d")
+        due_date = datetime.strptime(target_end, "%Y-%m-%d")
+
+        # 의미 규칙 2: 연체 중이 아니어야 한다. (현재 날짜 > 반납예정일이면 연체)
+        if current_date > due_date:
+            print("대여가 불가능합니다.")
+            continue
+
+        # 의미 규칙 3: 연장 횟수가 2회 미만이어야 한다.
+        # 연장 횟수 = (반납기한 - 대여일 - 14) / 7  (기본 대출 14일, 연장 1회당 +7일)
+        extend_count = ((due_date - rent_date).days - 14) // 7
+        if extend_count < 0:
+            extend_count = 0
+        if extend_count >= 2:
+            print("대여가 불가능합니다.")
+            continue
+
+        # 의미 규칙 4: 반납 예정일과 시스템 날짜가 7일 이내여야 한다.
+        if (due_date - current_date).days > 7:
+            print("대여가 불가능합니다.")
+            continue
+
+        # 모든 조건 통과 → 반납 예정일 7일 연장
+        new_due_date = due_date + timedelta(days=7)
+        new_due_str = new_due_date.strftime("%Y-%m-%d")
+
+        updated_rentals = []
+        for line in rentals_lines:
+            parts = line.split("/")
+            if len(parts) != 6:
+                updated_rentals.append(line)
+                continue
+            rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
+            if rental_num == target_num:
+                rental_date_end = new_due_str
+            updated_rentals.append(
+                f"{rental_num}/{rental_user}/{rental_book_id}/{rental_date_start}/{rental_date_end}/{rental_date_return}"
+            )
+
+        with open(_RENTALS_FILE, "w", encoding="utf-8") as frentals2:
+            frentals2.write("\n".join(updated_rentals) + "\n")
+
+        # 제목 조회
+        title = ""
+        for line in books_lines:
+            book_parts = line.split("/")
+            if len(book_parts) >= 5 and book_parts[0] == book:
+                title = book_parts[2]
+                break
+
+        print(f"[{book}]{title}의 연장이 완료되었습니다. 반납 예정일이 {new_due_str}로 변경되었습니다.")
+        print("--------------------------------------------------")
+        return

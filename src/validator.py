@@ -128,8 +128,8 @@ def _is_valid_password(pw: str) -> bool:
 
 
 def _is_valid_book_id(book_id: str) -> bool:
-    """도서번호 문법 규칙 (기획서 4.3.1): C333-22 형식"""
-    return bool(re.fullmatch(r'[FSHTAPLG]\d{3}-\d{2}', book_id))
+    """도서번호 문법 규칙 (기획서 4.3.1, 2차): 6자리 숫자-2자리 숫자 (예: 000001-01)"""
+    return bool(re.fullmatch(r'\d{6}-\d{2}', book_id))
 
 
 def _is_valid_rental_id(rental_id: str) -> bool:
@@ -431,13 +431,16 @@ def _check_syntax_books() -> list[ViolationItem]:
             violations.append(ViolationItem(filename, line_num, line))
             continue
 
-        # 카테고리 (기획서 4.3.2)
-        if category not in _ALLOWED_CATEGORIES:
-            violations.append(ViolationItem(filename, line_num, line))
-            continue
-
-        # 카테고리 코드 일치 (기획서 4.3.2 의미규칙)
-        if _CATEGORY_CODE_MAP.get(book_id[0]) != category:
+        # 카테고리 (기획서 4.3.2, 2차): 쉼표로 구분된 1개 이상의 카테고리.
+        # 각 카테고리는 대문자 알파벳으로만 구성되며 최대 32자.
+        # (2차에서는 도서번호에 카테고리 코드 prefix가 없으므로 코드 일치 검사를 하지 않는다.)
+        category_names = category.split(",")
+        category_ok = True
+        for cat in category_names:
+            if not cat or len(cat) > 32 or not re.fullmatch(r'[A-Z]+', cat):
+                category_ok = False
+                break
+        if not category_ok:
             violations.append(ViolationItem(filename, line_num, line))
             continue
 
