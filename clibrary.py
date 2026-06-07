@@ -1,6 +1,6 @@
 import sys
 
-from src.admin import add_book, delete_book, edit_book, view_users
+from src.admin import add_book, delete_book, edit_book, view_users, category_edit
 from src.auth import login, register
 from src.book import rent_book, return_book, search_book, sync_overdue_bans, view_book, extend_book
 from src.validator import (
@@ -72,7 +72,8 @@ def show_admin_menu(system_date: str) -> str:
     print("2. 도서 삭제")
     print("3. 도서 수정")
     print("4. 사용자 조회")
-    print("5. 도서 검색")
+    print("5. 카테고리 편집")
+    print("6. 도서 검색")
     print("0. 종료")
     return input("\n[ADMIN] 한자리 숫자를 입력하세요: ").strip()
 
@@ -124,6 +125,8 @@ def main() -> None:
             elif choice == "4":
                 view_users()
             elif choice == "5":
+                category_edit()
+            elif choice == "6":
                 search_book()
             else:
                 print("올바르지 않은 입력입니다.")

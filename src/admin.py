@@ -16,7 +16,7 @@ _DATA_DIR     = os.path.join(_ROOT_DIR, "data")
 _BOOKS_FILE   = os.path.join(_DATA_DIR, "books.txt")
 _USERS_FILE   = os.path.join(_DATA_DIR, "users.txt")
 _RENTALS_FILE = os.path.join(_DATA_DIR, "rentals.txt")
-
+_CATEGORY_FILE = os.path.join(_DATA_DIR, "category.txt")
 
 # 상수
 _ALLOWED_CATEGORIES = [
@@ -32,6 +32,10 @@ _CATEGORY_CODE_MAP = {
 
 _CODE_CATEGORY_MAP = {v: k for k, v in _CATEGORY_CODE_MAP.items()}
 
+_FIXED_CATEGORIES = [
+    "FICTION", "SCIENCE", "HISTORY", "TECHNOLOGY",
+    "ART", "PHILOSOPHY", "LANGUAGE", "GENERAL",
+]
 
 # 내부
 def _read_lines(filepath: str) -> list[str]:
@@ -55,7 +59,12 @@ def _write_lines(filepath: str, lines: list[str]) -> bool:
 
 def _is_valid_book_id(book_id: str) -> bool:
     """도서번호 문법 규칙(4.3.1): C333-22 형식"""
+    """2차 확장 (6.5.3): 666666-22 형식"""
     return bool(re.fullmatch(r'[FSHTAPLG]\d{3}-\d{2}', book_id))
+
+def _is_valid_book_code(book_code: str) -> bool:
+    """도서코드 문법 규칙 (6.5.3 확장): 도서번호에서 복본 번호를 제외한 666666형식"""
+    return bool(re.fullmatch(r'\d{6}', book_code))
 
 def _is_valid_title(title: str) -> bool:
     """도서 제목 문법 규칙(4.3.3)"""
@@ -129,7 +138,46 @@ def _save_rentals(rentals: list[dict]) -> bool:
         for r in rentals
     ]
     return _write_lines(_RENTALS_FILE, lines)
+# 2차 확장 시작 (카테고리)
+def load_categories() -> list[str]:
+    """category.txt 전체를 파싱하여 dict 목록으로 반환."""
+    categories = []
+    lines = _read_lines(_CATEGORY_FILE)
+    for i, line in enumerate(lines):
+        if i == 0:
+            for fixed in line.split("/"):
+                if fixed:
+                    categories.append(fixed)
+        else:
+            categories.append(line)
+    return categories
 
+def save_categories(categories: list[str]) -> bool:
+    """categories dict 목록을 category.txt에 저장."""
+    fixed = []
+    normal = []
+    for category in categories:
+        if category in _FIXED_CATEGORIES:
+            fixed.append(category)
+        else:
+            normal.append(category)
+    lines = []
+    if fixed:
+        lines.append("/".join(fixed))
+    for category in normal:
+        lines.append(category)
+    return _write_lines(_CATEGORY_FILE, lines)
+
+def is_valid_category(category: str) -> bool:
+    """카테고리 문법 규칙(4.3.2)"""
+    if not category:
+        return False
+    if len(category) > 32:
+        return False
+    if not re.fullmatch(r'[A-Z]{1,32}', category):
+        return False
+    return True
+#2차 확장 끝 (카테고리)
 def _is_book_rented(book_id: str) -> bool:
     """해당 도서번호가 현재 대출 중인지 확인."""
     for r in _get_rentals():
@@ -166,7 +214,6 @@ def _next_book_id(category_code: str, books: list[dict]) -> str | None:
     if new_code > 999:
         return None
     return f"{category_code}{new_code:03d}-01"
-
 
 def _generate_book_id_for_info(
     
@@ -226,7 +273,370 @@ def _has_copies(book: dict, books: list[dict]) -> bool:
         if b["id"] != book["id"] and b["id"][:4] == prefix:
             return True
     return False
+#2차 확장 시작 (카테고리)
+def add_book_category(matched_books: list[dict]) -> bool:
+    """동일 도서코드를 가진 복본 전체에 카테고리를 추가 """
+    new_category = input("추가하고자 하는 카테고리를 입력하십시오: ").strip()
 
+    categories = load_categories()
+    current_categories = matched_books[0]["category"].split(",")
+
+    # 의미 규칙 1: category.txt 존재 여부
+    if new_category not in categories:
+        print("존재하지 않는 카테고리입니다. [카테고리를 편집]에서 카테고리를 추가한 다음 다시 시도해 주세요.")
+        return False
+
+    # 의미 규칙 2: 해당 도서의 카테고리 필드 중복 여부
+    if new_category in current_categories:
+        print("해당 도서는 입력한 카테고리가 이미 존재합니다.")
+        return False
+
+    old_category_str = matched_books[0]["category"]
+    new_category_str = old_category_str + "," + new_category
+
+    book_code = matched_books[0]["id"][:6]
+    books = _get_books()
+    for book in books:
+        if book["id"][:6] == book_code:
+            book["category"] = new_category_str
+    if not _save_books(books):
+        print("오류: 도서 파일 저장에 실패했습니다.")
+        return False
+
+    for book in matched_books:
+        book["category"] = new_category_str
+
+    print("카테고리가 추가되었습니다.")
+    print(f"{old_category_str.replace(',', ', ')} >> {new_category_str.replace(',', ', ')}")
+
+    return True
+
+def remove_book_category(matched_books: list[dict]) -> bool:
+    """동일 도서코드를 가진 복본 전체에서 카테고리를 삭제"""
+    remove_category = input("삭제하고자 하는 카테고리를 입력하십시오: ").strip()
+
+    current_categories = matched_books[0]["category"].split(",")
+
+    # 의미 규칙 1: 해당 도서의 카테고리 필드 존재 여부
+    if remove_category not in current_categories:
+        print("해당 도서에 존재하지 않는 카테고리입니다.")
+        return False
+
+    # 의미 규칙 2: 최소 1개 카테고리 유지
+    if len(current_categories) < 2:
+        print("모든 도서는 한가지 이상의 카테고리를 가지고 있어야 합니다.")
+        return False
+
+    old_category_str = matched_books[0]["category"]
+    new_categories = [c for c in current_categories if c != remove_category]
+    new_category_str = ",".join(new_categories)
+
+    book_code = matched_books[0]["id"][:6]
+    books = _get_books()
+    for book in books:
+        if book["id"][:6] == book_code:
+            book["category"] = new_category_str
+    if not _save_books(books):
+        print("오류: 도서 파일 저장에 실패했습니다.")
+        return False
+
+    for book in matched_books:
+        book["category"] = new_category_str
+
+    print("카테고리가 삭제되었습니다.")
+    print(f"{old_category_str.replace(',', ', ')} >> {new_category_str.replace(',', ', ')}")
+
+    return True
+
+def update_book_category(matched_books: list[dict]) -> bool:
+    """동일 도서코드를 가진 복본 전체의 카테고리를 수정"""
+    raw = input("수정하고자 하는 카테고리를 입력하십시오: ").strip()
+    parts = raw.split()
+    if len(parts) != 2:
+        print("옳지 않은 입력입니다. 다시 입력해주세요.")
+        return False
+    old_category, new_category = parts
+
+    categories = load_categories()
+    current_categories = matched_books[0]["category"].split(",")
+
+    # 의미 규칙 1: 기존 카테고리가 해당 도서에 존재
+    cond1_fail = old_category not in current_categories
+    # 의미 규칙 2: 수정 후 카테고리가 category.txt에 존재
+    cond2_fail = new_category not in categories
+
+    if cond1_fail:
+        print("수정하고자 하는 해당 도서의 카테고리가 해당 도서에 존재하지 않습니다.")
+    if cond2_fail:
+        print("입력받은 카테고리가 존재하지 않는 카테고리입니다. [카테고리를 편집]에서 카테고리를 추가한 다음 다시 시도해 주세요.")
+    if cond1_fail or cond2_fail:
+        return False
+
+    old_category_str = matched_books[0]["category"]
+    new_categories = [new_category if c == old_category else c for c in current_categories]
+    new_category_str = ",".join(new_categories)
+
+    book_code = matched_books[0]["id"][:6]
+    books = _get_books()
+    for book in books:
+        if book["id"][:6] == book_code:
+            book["category"] = new_category_str
+    if not _save_books(books):
+        print("오류: 도서 파일 저장에 실패했습니다.")
+        return False
+
+    for book in matched_books:
+        book["category"] = new_category_str
+
+    print("카테고리가 수정되었습니다.")
+    print(f"{old_category_str.replace(',', ', ')} >> {new_category_str.replace(',', ', ')}")
+
+    return True
+
+def category_edit_prompt(matched_books: list[dict]) -> bool:
+    """도서 수정 카테고리 부 프롬프트"""
+    while True:
+        print("[현재 도서 정보]")
+        print(f"카테고리: {matched_books[0]['category'].replace(',', ', ')}")
+        print(f"제목: {matched_books[0]['title']}")
+        print(f"저자: {matched_books[0]['author']}")
+        print("수행할 카테고리 작업을 설정하세요.")
+        print("1. 추가")
+        print("2. 삭제")
+        print("3. 수정")
+        print("0. 돌아가기")
+        choice = input("카테고리 작업: ").strip()
+
+        if choice == "0":
+            return False
+        if choice == "1":
+            return add_book_category(matched_books)
+        if choice == "2":
+            return remove_book_category(matched_books)
+        if choice == "3":
+            return update_book_category(matched_books)
+        print("옳지 않은 입력입니다. 다시 입력해주세요.")
+
+
+
+def add_category() -> None:
+    """category.txt에 새 카테고리를 추가"""
+    new_category = input("추가하고자 하는 카테고리를 입력하십시오: ").strip()
+
+    categories = load_categories()
+
+    # 의미 규칙 1: 존재 여부
+    cond1_fail = new_category in categories
+    # 의미 규칙 2: 대문자 알파벳만
+    cond2_fail = not re.fullmatch(r'[A-Z]+', new_category)
+    # 의미 규칙 3: 최대 32자
+    cond3_fail = len(new_category) > 32
+
+    if cond1_fail:
+        print("이미 해당 카테고리가 존재합니다.")
+    if cond2_fail:
+        print("카테고리는 대문자 알파벳을 제외한 다른 문자열을 허용하지 않습니다.")
+    if cond3_fail:
+        print("카테고리는 최대 32글자만 허용합니다.")
+    if cond1_fail or cond2_fail or cond3_fail:
+        return
+
+    # 정상 결과: 사용자 확인 절차
+    while True:
+        confirm = input(f"{new_category} 카테고리를 추가하시겠습니까? (Y/N) : ").strip()
+        if confirm in ("Y", "y"):
+            categories.append(new_category)
+            if not save_categories(categories):
+                print("오류: 카테고리 파일 저장에 실패했습니다.")
+                return
+            print("카테고리가 추가되었습니다.")
+            print(f"고정 카테고리: {'/'.join(c for c in categories if c in _FIXED_CATEGORIES)}")
+            normal_cats = [c for c in categories if c not in _FIXED_CATEGORIES]
+            print(f"일반 카테고리: {'/'.join(normal_cats)}")
+            return
+        if confirm in ("N", "n"):
+            print("카테고리 추가 작업을 취소합니다.")
+            return
+
+def modify_category() -> None:
+    """category.txt의 일반 카테고리를 수정"""
+    raw = input("수정하고자 하는 카테고리를 입력하십시오: ").strip()
+    parts = raw.split()
+    if len(parts) != 2:
+        print("옳지 않은 입력입니다. 다시 입력해주세요.")
+        return
+    old_category, new_category = parts
+
+    categories = load_categories()
+
+    # 그룹 A: 기존 카테고리 (의미 규칙 1, 2)
+    group_a_msg = None
+    if old_category not in categories:
+        group_a_msg = "수정하고자 하는 카테고리가 존재하지 않습니다."
+    elif old_category in _FIXED_CATEGORIES:
+        group_a_msg = "고정 카테고리는 수정이 불가합니다."
+
+    # 그룹 B: 새 카테고리 (의미 규칙 3, 4, 5)
+    group_b_msgs = []
+    if new_category in categories:
+        group_b_msgs.append("이미 해당 카테고리가 존재합니다.")
+    else:
+        if not re.fullmatch(r'[A-Z]+', new_category):
+            group_b_msgs.append("카테고리는 대문자 알파벳을 제외한 다른 문자열을 허용하지 않습니다.")
+        if len(new_category) > 32:
+            group_b_msgs.append("카테고리는 최대 32글자만 허용합니다.")
+
+    if group_a_msg:
+        print(group_a_msg)
+    for msg in group_b_msgs:
+        print(msg)
+    if group_a_msg or group_b_msgs:
+        return
+
+    # 정상: category.txt 수정
+    new_categories = [new_category if c == old_category else c for c in categories]
+    if not save_categories(new_categories):
+        print("오류: 카테고리 파일 저장에 실패했습니다.")
+        return
+
+    # books.txt 일괄 갱신
+    books = _get_books()
+    for book in books:
+        cats = book["category"].split(",")
+        cats = [new_category if c == old_category else c for c in cats]
+        book["category"] = ",".join(cats)
+    if not _save_books(books):
+        print("오류: 도서 파일 저장에 실패했습니다.")
+        return
+
+    print("카테고리가 수정되었습니다.")
+    print(f"고정 카테고리: {'/'.join(c for c in new_categories if c in _FIXED_CATEGORIES)}")
+    normal_cats = [c for c in new_categories if c not in _FIXED_CATEGORIES]
+    print(f"일반 카테고리: {'/'.join(normal_cats)}")
+
+def merge_category() -> None:
+    """category.txt의 두 카테고리를 하나로 통합"""
+    category1 = input("통합하고자 하는 카테고리를 입력하십시오: ").strip()
+    category2 = input("통합하고자 하는 카테고리를 입력하십시오: ").strip()
+
+    categories = load_categories()
+
+    category1_fixed = category1 in _FIXED_CATEGORIES
+    category2_fixed = category2 in _FIXED_CATEGORIES
+    fixed_count = (1 if category1_fixed else 0) + (1 if category2_fixed else 0)
+
+    # 2형 질문은 1형에서 고정 카테고리를 한 번도 받지 않은 경우만 출력
+    raw = None
+    if fixed_count == 0:
+        raw = input("통합할 카테고리 이름을 입력하십시오 ('0'을 입력시 첫 번째로 입력받은 카테고리로 통합됩니다.): ").strip()
+
+    # 오류 수집 (1형/2형 오류를 한 번에 출력)
+    errors = []
+    # 조건 1
+    if category1 not in categories or category2 not in categories:
+        errors.append("통합하고자 하는 카테고리가 존재하지 않습니다.")
+    # 조건 2
+    if fixed_count == 2:
+        errors.append("고정 카테고리 2개를 통합할 수 없습니다.")
+    # 조건 3
+    if category1 == category2:
+        errors.append("같은 카테고리를 통합할 수 없습니다.")
+    # 조건 4~6
+    if raw is not None and raw != "0":
+        if raw in categories and raw != category1 and raw != category2:
+            errors.append("통합할 카테고리 이름은 통합하고자 하는 카테고리 중 하나이거나, 존재하지 않은 카테고리 이어야 합니다.")
+        if not re.fullmatch(r'[A-Z]+', raw):
+            errors.append("카테고리는 대문자 알파벳을 제외한 다른 문자열을 허용하지 않습니다.")
+        if len(raw) > 32:
+            errors.append("카테고리는 최대 32글자만 허용합니다.")
+
+    if errors:
+        for e in errors:
+            print(e)
+        return
+
+    # 통합 후 카테고리 결정
+    if category1_fixed:
+        merged = category1
+    elif category2_fixed:
+        merged = category2
+    elif raw == "0":
+        merged = category1
+    else:
+        merged = raw
+
+    # category.txt 갱신: category1, category2 제거 후 merged 추가
+    new_categories = [c for c in categories if c != category1 and c != category2]
+    if merged not in new_categories:
+        new_categories.append(merged)
+    if not save_categories(new_categories):
+        print("오류: 카테고리 파일 저장에 실패했습니다.")
+        return
+
+    # books.txt 갱신: category1, category2를 merged로 치환 + 중복 제거
+    books = _get_books()
+    for book in books:
+        categories = book["category"].split(",")
+        new_categories = []
+        for c in categories:
+            replaced = merged if c == category1 or c == category2 else c
+            if replaced not in new_categories:
+                new_categories.append(replaced)
+        book["category"] = ",".join(new_categories)
+    if not _save_books(books):
+        print("오류: 도서 파일 저장에 실패했습니다.")
+        return
+
+    print("카테고리가 통합되었습니다.")
+    print(f"{category1} + {category2} = {merged}")
+    print(f"고정 카테고리: {'/'.join(c for c in new_categories if c in _FIXED_CATEGORIES)}")
+    normal_cats = [c for c in new_categories if c not in _FIXED_CATEGORIES]
+    print(f"일반 카테고리: {'/'.join(normal_cats)}")
+
+def delete_category() -> None:
+    """category.txt의 일반 카테고리를 삭제"""
+    target = input("삭제하고자 하는 카테고리를 입력하십시오: ").strip()
+
+    categories = load_categories()
+    books = _get_books()
+
+    # 조건 1: 존재
+    cond1_fail = target not in categories
+    # 조건 2: 고정 카테고리 아님
+    cond2_fail = target in _FIXED_CATEGORIES
+    # 조건 3: 해당 카테고리만 가진 책 없음
+    cond3_fail = not cond2_fail and any(book["category"].split(",") == [target] for book in books)
+
+    if cond1_fail:
+        print("삭제하고자 하는 카테고리가 존재하지 않습니다.")
+    if cond2_fail:
+        print("고정 카테고리는 삭제 불가합니다.")
+    if cond3_fail:
+        print("해당 카테고리를 지닌 도서가 존재합니다. 해당 도서(들)의 카테고리를 수정 후 다시 시도해 주세요.")
+    if cond1_fail or cond2_fail or cond3_fail:
+        return
+
+    # category.txt에서 제거
+    new_categories = [c for c in categories if c != target]
+    if not save_categories(new_categories):
+        print("오류: 카테고리 파일 저장에 실패했습니다.")
+        return
+
+    # books.txt 갱신: target이 들어있는 책에서 target만 제거
+    for book in books:
+        cats = book["category"].split(",")
+        if target in cats:
+            cats = [c for c in cats if c != target]
+            book["category"] = ",".join(cats)
+    if not _save_books(books):
+        print("오류: 도서 파일 저장에 실패했습니다.")
+        return
+
+    print("카테고리가 삭제되었습니다.")
+    print(f"고정 카테고리: {'/'.join(c for c in new_categories if c in _FIXED_CATEGORIES)}")
+    normal_cats = [c for c in new_categories if c not in _FIXED_CATEGORIES]
+    print(f"일반 카테고리: {'/'.join(normal_cats)}")
+#2차 확장 끝 (카테고리)
 
 # 6.5.1 도서 추가
 def add_book() -> None:
@@ -370,10 +780,10 @@ def edit_book() -> None:
     수정 가능 필드: 카테고리, 제목, 저자
     """
     print("\n--------------------------------------------------")
-    book_id = input("수정할 도서의 도서번호를 입력하세요: ").strip()
+    book_code = input("수정할 도서의 도서번호를 입력하세요: ").strip()
 
     #문법 규칙
-    if not _is_valid_book_id(book_id):
+    if not _is_valid_book_code(book_code):
         print("옳지 않은 입력입니다. 다시 입력해주세요.")
         print("--------------------------------------------------")
         return
@@ -381,18 +791,18 @@ def edit_book() -> None:
     books = _get_books()
 
     #의미 규칙: 도서 존재 여부
-    target_idx = next((i for i, b in enumerate(books) if b["id"] == book_id), None)
-    if target_idx is None:
+    matched_books = [b for b in books if b["id"][:6] == book_code]
+    if not matched_books:
         print("존재하지 않는 도서번호입니다. 다시 시도해주세요.")
         print("--------------------------------------------------")
         return
 
-    target = books[target_idx]
+    target = matched_books[0]
 
     # 현재 도서 정보 출력
     print("[현재 도서 정보]")
-    print(f"도서 번호: {target['id']}")
-    print(f"카테고리: {target['category']}")
+    print(f"도서 번호: {book_code}")
+    print(f"카테고리: {target['category'].replace(',', ', ')}")
     print(f"제목: {target['title']}")
     print(f"저자: {target['author']}")
 
@@ -410,144 +820,66 @@ def edit_book() -> None:
             print("--------------------------------------------------")
             return
 
-        if field_input not in ("1", "2", "3"):
-            print("옳지 않은 입력입니다. 다시 입력해주세요.")
-            continue
+        if field_input == "1":
+            if category_edit_prompt(matched_books):
+                print("수정이 완료되었습니다. 관리자 프롬프트로 이동합니다.")
+                print("--------------------------------------------------")
+                return # 정상 -> 관리자 프롬프트
+            continue  # 비정상 -> 도서 수정 프롬프트
 
-        field_num = field_input
-        break
-
-    updated_category = target["category"]
-    updated_title = target["title"]
-    updated_author = target["author"]
-    old_id = target["id"]
-
-    # 새 값 입력
-    has_copies = _has_copies(target, books)
-
-    if field_num == "1":
-        new_value = input("[카테고리]수정할 정보를 입력하세요: ").strip()
-        if new_value not in _ALLOWED_CATEGORIES:
-            print("올바르지 않은 카테고리입니다.")
-            print(f"허용: {', '.join(_ALLOWED_CATEGORIES)}")
+        if field_input == "2":
+            new_value = input("[제목]수정할 정보를 입력하세요: ").strip()
+            if not _is_valid_title(new_value):
+                print("제목이 올바르지 않습니다.")
+                print("(최대 32자, 한글/알파벳/숫자/공백만 허용, 앞뒤 공백 불가)")
+                print("--------------------------------------------------")
+                return
+            if new_value == target["title"]:
+                print("현재와 동일한 제목입니다.")
+                print("--------------------------------------------------")
+                return
+            old_value = target["title"]
+            for book in books:
+                if book["id"][:6] == book_code:
+                    book["title"] = new_value
+            if not _save_books(books):
+                print("오류: 도서 파일 저장에 실패했습니다.")
+                print("--------------------------------------------------")
+                return
+            for book in matched_books:
+                book["title"] = new_value
+            print(f"제목: {old_value} -> {new_value}")
+            print("수정이 완료되었습니다. 관리자 프롬프트로 이동합니다.")
             print("--------------------------------------------------")
             return
-        
-        new_code = _CODE_CATEGORY_MAP[new_value]
-        if new_code == target["id"][0]:
-            print("현재와 동일한 카테고리입니다.")
+
+        if field_input == "3":
+            new_value = input("[저자]수정할 정보를 입력하세요: ").strip()
+            if not _is_valid_author(new_value):
+                print("저자명이 올바르지 않습니다.")
+                print("(최대 32자, 한글/알파벳/숫자/공백/() 만 허용, 앞뒤 공백 불가)")
+                print("--------------------------------------------------")
+                return
+            if new_value == target["author"]:
+                print("현재와 동일한 저자입니다.")
+                print("--------------------------------------------------")
+                return
+            old_value = target["author"]
+            for book in books:
+                if book["id"][:6] == book_code:
+                    book["author"] = new_value
+            if not _save_books(books):
+                print("오류: 도서 파일 저장에 실패했습니다.")
+                print("--------------------------------------------------")
+                return
+            for book in matched_books:
+                book["author"] = new_value
+            print(f"저자: {old_value} -> {new_value}")
+            print("수정이 완료되었습니다. 관리자 프롬프트로 이동합니다.")
             print("--------------------------------------------------")
             return
 
-        old_value = target["category"]
-        updated_category = new_value
-        new_id, is_copy = _generate_book_id_for_info(
-            updated_category,
-            updated_title,
-            updated_author,
-            books,
-            exclude_id=old_id
-        )
-        
-
-    elif field_num == "2":
-        new_value = input("[제목]수정할 정보를 입력하세요: ").strip()
-        if not _is_valid_title(new_value):
-            print("제목이 올바르지 않습니다.")
-            print("(최대 32자, 한글/알파벳/숫자/공백만 허용, 앞뒤 공백 불가)")
-            print("--------------------------------------------------")
-            return
-        
-        if new_value == target["title"]:
-            print("현재와 동일한 제목입니다.")
-            print("--------------------------------------------------")
-            return
-        
-        old_value = target["title"]
-        updated_title = new_value
-
-        if has_copies:
-            new_id, is_copy = _generate_book_id_for_info(
-                updated_category,
-                updated_title,
-                updated_author,
-                books,
-                exclude_id=old_id
-            )
-        else:
-            new_id = old_id
-            is_copy = False
-
-    else:
-        new_value = input("[저자]수정할 정보를 입력하세요: ").strip()
-        if not _is_valid_author(new_value):
-            print("저자명이 올바르지 않습니다.")
-            print("(최대 32자, 한글/알파벳/숫자/공백/() 만 허용, 앞뒤 공백 불가)")
-            print("--------------------------------------------------")
-            return
-        
-        if new_value == target["author"]:
-            print("현재와 동일한 저자입니다.")
-            print("--------------------------------------------------")
-            return
-        old_value = target["author"]
-        updated_author = new_value
-
-        if has_copies:
-            new_id, is_copy = _generate_book_id_for_info(
-                updated_category,
-                updated_title,
-                updated_author,
-                books,
-                exclude_id=old_id
-            )
-        else:
-            new_id = old_id
-            is_copy = False
-
-    
-    
-    
-    if new_id is None:
-        print("오류: 도서번호를 생성할 수 없습니다.")
-        print("--------------------------------------------------")
-        return
-
-    books[target_idx]["category"] = updated_category
-    books[target_idx]["title"] = updated_title
-    books[target_idx]["author"] = updated_author
-    books[target_idx]["id"] = new_id
-
-
-    if not _save_books(books):
-        print("오류: 도서 파일 저장에 실패했습니다.")
-        print("--------------------------------------------------")
-        return
-
-    if old_id != new_id:
-        rentals = _get_rentals()
-        for r in rentals:
-            if r["book_id"] == old_id:
-                r["book_id"] = new_id
-
-        if not _save_rentals(rentals):
-            print("오류: 대출 파일 저장에 실패했습니다.")
-            print("--------------------------------------------------")
-            return
-        
-    if field_num == "1":
-        print(f"카테고리: {old_value} -> {new_value}")
-    elif field_num == "2":
-        print(f"제목: {old_value} -> {new_value}")
-    elif field_num == "3":
-        print(f"저자: {old_value} -> {new_value}")
-    
-    if old_id != new_id:
-        print(f"도서번호: {old_id} -> {new_id}")
-        
-    print("수정이 완료되었습니다. 관리자 프롬프트로 이동합니다.")
-    print("--------------------------------------------------")
-
+        print("옳지 않은 입력입니다. 다시 입력해주세요.")
 
 # 6.5.4 회원 목록 조회
 def view_users() -> None:
@@ -580,3 +912,35 @@ def view_users() -> None:
         print("옳지 않은 입력입니다. 다시 입력해주세요.")
         print("0을 입력하세요: ", end="")
     print("--------------------------------------------------")
+
+# 6.5.5 카테고리 편집
+def category_edit() -> None:
+    """category.txt의 카테고리를 추가/수정/통합/삭제한다. (6.5.5)"""
+    print("\n--------------------------------------------------")
+    while True:
+        categories = load_categories()
+        print("[현재 카테고리 정보]")
+        print(f"고정 카테고리: {'/'.join(c for c in categories if c in _FIXED_CATEGORIES)}")
+        normal_categories = [c for c in categories if c not in _FIXED_CATEGORIES]
+        print(f"일반 카테고리: {'/'.join(normal_categories)}")
+        print("수행할 작업을 설정하세요.")
+        print("1. 추가")
+        print("2. 수정")
+        print("3. 통합")
+        print("4. 삭제")
+        print("0. 돌아가기")
+        choice = input("작업: ").strip()
+
+        if choice == "0":
+            print("--------------------------------------------------")
+            return
+        if choice == "1":
+            add_category()
+        elif choice == "2":
+            modify_category()
+        elif choice == "3":
+            merge_category()
+        elif choice == "4":
+            delete_category()
+        else:
+            print("옳지 않은 입력입니다. 다시 입력해주세요.")
