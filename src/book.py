@@ -1,15 +1,16 @@
-﻿# src/book.py
+# src/book.py
 import os
 import re
 import unicodedata
 from datetime import datetime, timedelta
 
 
-_ROOT_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DATA_DIR     = os.path.join(_ROOT_DIR, "data")
-_BOOKS_FILE   = os.path.join(_DATA_DIR, "books.txt")
-_USERS_FILE   = os.path.join(_DATA_DIR, "users.txt")
-_RENTALS_FILE = os.path.join(_DATA_DIR, "rentals.txt")
+_ROOT_DIR         = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DATA_DIR         = os.path.join(_ROOT_DIR, "data")
+_BOOKS_FILE       = os.path.join(_DATA_DIR, "books.txt")
+_USERS_FILE       = os.path.join(_DATA_DIR, "users.txt")
+_RENTALS_FILE     = os.path.join(_DATA_DIR, "rentals.txt")
+_RESERVATION_FILE = os.path.join(_DATA_DIR, "reservation.txt")
 
 def load_books():
     with open(_BOOKS_FILE, "a+", encoding="utf-8") as fbooks:
@@ -25,6 +26,35 @@ def load_users():
     with open(_USERS_FILE, "a+", encoding="utf-8") as fusers:
         fusers.seek(0)
         return [line for line in fusers.read().splitlines() if line.strip()]
+
+def load_reservations():
+    result = []
+    with open(_RESERVATION_FILE, "a+", encoding="utf-8") as f:
+        f.seek(0)
+        for line in f.read().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("/")
+            if len(parts) == 5:
+                result.append({
+                    "resv_id": parts[0],
+                    "user_id": parts[1],
+                    "book_code": parts[2],
+                    "date": parts[3],
+                    "status": parts[4],
+                })
+    return result
+
+def save_reservations(reservations):
+    lines = [
+        f"{r['resv_id']}/{r['user_id']}/{r['book_code']}/{r['date']}/{r['status']}"
+        for r in reservations
+    ]
+    with open(_RESERVATION_FILE, "w", encoding="utf-8") as f:
+        content = "\n".join(lines)
+        if content:
+            f.write(content + "\n")
 
 def display_width(text):
     width = 0
@@ -346,6 +376,7 @@ def return_book(id, date):
 
         print(f"[도서번호] {book}")
         print("도서 반납이 완료되었습니다.")
+        _process_reservation_after_return(book, date)
         return
 
 
@@ -587,4 +618,286 @@ def extend_book(id, date):
 
         print(f"[{book}]{title}의 연장이 완료되었습니다. 반납 예정일이 {new_due_str}로 변경되었습니다.")
         print("--------------------------------------------------")
+        return
+
+
+def reserve_book(user_id, system_date):
+    """도서 예약 (기획서 6.3.6)"""
+    update_overdue_ban(user_id, system_date)
+
+    print("\n--------------------------------------------------")
+    book_code = input("예약할 도서의 도서번호를 입력하세요: ").strip()
+
+    pattern = re.compile(r"^[0-9]{6}$")
+    if not pattern.fullmatch(book_code):
+        print("옳지 않은 입력입니다.")
+        print("--------------------------------------------------")
+        return
+
+    books_lines = load_books()
+    rentals_lines = load_rentals()
+    users_lines = load_users()
+    reservations = load_reservations()
+    current_date = datetime.strptime(system_date, "%Y-%m-%d")
+
+    book_exists = any(
+        line.split("/")[0][:6] == book_code
+        for line in books_lines
+        if len(line.split("/")) == 5
+    )
+    if not book_exists:
+        print("존재하지 않는 도서번호입니다.")
+        print("--------------------------------------------------")
+        return
+
+    any_available = any(
+        line.split("/")[0][:6] == book_code and line.split("/")[4] == "AVAILABLE"
+        for line in books_lines
+        if len(line.split("/")) == 5
+    )
+    if any_available:
+        print("예약이 필요하지 않은 도서입니다.")
+        print("--------------------------------------------------")
+        return
+
+    already_reserved = any(
+        r["user_id"] == user_id and r["book_code"] == book_code and r["status"] == "PENDING"
+        for r in reservations
+    )
+    if already_reserved:
+        print("이미 예약 중인 도서입니다.")
+        print("--------------------------------------------------")
+        return
+
+    is_banned = False
+    for line in users_lines:
+        parts = line.split("/")
+        if len(parts) != 3:
+            continue
+        u_id, u_pw, u_ban = parts
+        if u_id == user_id and u_ban != "NONE":
+            if current_date <= datetime.strptime(u_ban, "%Y-%m-%d"):
+                is_banned = True
+                break
+    if is_banned:
+        print("현재 대출 정지 중입니다. 대출정지 종료일 이후에 시도해주세요.")
+        print("--------------------------------------------------")
+        return
+
+    rented_count = sum(
+        1 for line in rentals_lines
+        for parts in [line.split("/")]
+        if len(parts) == 6 and parts[1] == user_id and parts[5] == "NONE"
+    )
+    if rented_count >= 3:
+        print("대여중인 수량이 최대(3권)입니다. 반납 후 시도해주세요.")
+        print("--------------------------------------------------")
+        return
+
+    pending_count = sum(
+        1 for r in reservations
+        if r["user_id"] == user_id and r["status"] == "PENDING"
+    )
+    if pending_count >= 5:
+        print("예약 가능 권수(5권)를 초과하였습니다.")
+        print("--------------------------------------------------")
+        return
+
+    total_copies = sum(
+        1 for line in books_lines
+        for parts in [line.split("/")]
+        if len(parts) == 5 and parts[0][:6] == book_code
+    )
+    book_pending_count = sum(
+        1 for r in reservations
+        if r["book_code"] == book_code and r["status"] == "PENDING"
+    )
+    if book_pending_count >= total_copies:
+        print("해당 도서의 예약 가능 인원이 초과되었습니다.")
+        print("--------------------------------------------------")
+        return
+
+    max_num = 0
+    for r in reservations:
+        rid = r["resv_id"]
+        if rid.startswith("V") and rid[1:].isdigit():
+            max_num = max(max_num, int(rid[1:]))
+
+    new_resv_id = f"V{max_num + 1:04d}"
+    reservations.append({
+        "resv_id": new_resv_id,
+        "user_id": user_id,
+        "book_code": book_code,
+        "date": system_date,
+        "status": "PENDING",
+    })
+    save_reservations(reservations)
+
+    print(f"[도서번호] {book_code}")
+    print("도서 예약이 완료되었습니다.")
+    print("--------------------------------------------------")
+
+
+def process_login_reservation(user_id, system_date):
+    """로그인 시 자동 대출 처리 및 예약 자동 취소 (기획서 6.2.2)"""
+    reservations = load_reservations()
+    user_pendings = [r for r in reservations if r["user_id"] == user_id and r["status"] == "PENDING"]
+    if not user_pendings:
+        return
+
+    users_lines = load_users()
+    rentals_lines = load_rentals()
+    books_lines = load_books()
+    current_date = datetime.strptime(system_date, "%Y-%m-%d")
+
+    is_banned = False
+    for line in users_lines:
+        parts = line.split("/")
+        if len(parts) != 3:
+            continue
+        u_id, u_pw, u_ban = parts
+        if u_id == user_id and u_ban != "NONE":
+            if current_date <= datetime.strptime(u_ban, "%Y-%m-%d"):
+                is_banned = True
+                break
+
+    rented_count = sum(
+        1 for line in rentals_lines
+        for parts in [line.split("/")]
+        if len(parts) == 6 and parts[1] == user_id and parts[5] == "NONE"
+    )
+
+    if is_banned or rented_count >= 3:
+        cancelled_count = len(user_pendings)
+        reservations = [
+            r for r in reservations
+            if not (r["user_id"] == user_id and r["status"] == "PENDING")
+        ]
+        save_reservations(reservations)
+        print(f"이용 제한 상태로 인해 회원님의 PENDING 예약 {cancelled_count}건이 모두 자동 취소되었습니다.")
+        return
+
+    max_rental_num = 0
+    for line in rentals_lines:
+        rnum = line.split("/")[0]
+        if rnum.startswith("R") and rnum[1:].isdigit():
+            max_rental_num = max(max_rental_num, int(rnum[1:]))
+
+    books_changed = False
+    rentals_changed = False
+
+    for r in reservations:
+        if r["user_id"] != user_id or r["status"] != "PENDING":
+            continue
+        if rented_count >= 3:
+            break
+
+        book_code = r["book_code"]
+        available_copy = None
+        for line in books_lines:
+            parts = line.split("/")
+            if len(parts) == 5 and parts[0][:6] == book_code and parts[4] == "AVAILABLE":
+                available_copy = parts[0]
+                break
+
+        if available_copy is None:
+            continue
+
+        new_books = []
+        for line in books_lines:
+            parts = line.split("/")
+            if len(parts) == 5 and parts[0] == available_copy:
+                new_books.append(f"{parts[0]}/{parts[1]}/{parts[2]}/{parts[3]}/RENTED")
+            else:
+                new_books.append(line)
+        books_lines = new_books
+        books_changed = True
+
+        max_rental_num += 1
+        new_rental_num = f"R{max_rental_num:04d}"
+        end_date = current_date + timedelta(days=14)
+        new_rental = f"{new_rental_num}/{user_id}/{available_copy}/{system_date}/{end_date.strftime('%Y-%m-%d')}/NONE"
+        rentals_lines.append(new_rental)
+        rentals_changed = True
+
+        r["status"] = "DONE"
+        rented_count += 1
+
+    if books_changed:
+        with open(_BOOKS_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(books_lines) + "\n")
+
+    if rentals_changed:
+        with open(_RENTALS_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(rentals_lines) + "\n")
+
+    save_reservations(reservations)
+
+
+def _process_reservation_after_return(book_id, system_date):
+    """반납 후 해당 도서에 대한 예약 자동 대출 처리 (기획서 6.3.3)"""
+    book_code = book_id[:6]
+    reservations = load_reservations()
+
+    pending = [r for r in reservations if r["book_code"] == book_code and r["status"] == "PENDING"]
+    if not pending:
+        return
+
+    pending.sort(key=lambda r: (r["date"], r["resv_id"]))
+
+    users_lines = load_users()
+    rentals_lines = load_rentals()
+    books_lines = load_books()
+    current_date = datetime.strptime(system_date, "%Y-%m-%d")
+
+    for r in pending:
+        target_user = r["user_id"]
+
+        is_banned = False
+        for line in users_lines:
+            parts = line.split("/")
+            if len(parts) != 3:
+                continue
+            u_id, u_pw, u_ban = parts
+            if u_id == target_user and u_ban != "NONE":
+                if current_date <= datetime.strptime(u_ban, "%Y-%m-%d"):
+                    is_banned = True
+                    break
+
+        rented_count = sum(
+            1 for line in rentals_lines
+            for parts in [line.split("/")]
+            if len(parts) == 6 and parts[1] == target_user and parts[5] == "NONE"
+        )
+
+        if is_banned or rented_count >= 3:
+            continue
+
+        new_books = []
+        for line in books_lines:
+            parts = line.split("/")
+            if len(parts) == 5 and parts[0] == book_id:
+                new_books.append(f"{parts[0]}/{parts[1]}/{parts[2]}/{parts[3]}/RENTED")
+            else:
+                new_books.append(line)
+
+        with open(_BOOKS_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(new_books) + "\n")
+
+        max_num = 0
+        for line in rentals_lines:
+            rnum = line.split("/")[0]
+            if rnum.startswith("R") and rnum[1:].isdigit():
+                max_num = max(max_num, int(rnum[1:]))
+
+        new_rental_num = f"R{max_num + 1:04d}"
+        end_date = current_date + timedelta(days=14)
+        new_rental = f"{new_rental_num}/{target_user}/{book_id}/{system_date}/{end_date.strftime('%Y-%m-%d')}/NONE"
+        rentals_lines.append(new_rental)
+
+        with open(_RENTALS_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(rentals_lines) + "\n")
+
+        r["status"] = "DONE"
+        save_reservations(reservations)
         return
