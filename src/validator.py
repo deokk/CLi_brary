@@ -12,12 +12,13 @@ from typing import Optional
 # 루트 기준으로 data/ 폴더를 찾는다.
 # ─────────────────────────────────────────────────────────
 
-_ROOT_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DATA_DIR      = os.path.join(_ROOT_DIR, "data")
-_USERS_FILE    = os.path.join(_DATA_DIR, "users.txt")
-_BOOKS_FILE    = os.path.join(_DATA_DIR, "books.txt")
-_RENTALS_FILE  = os.path.join(_DATA_DIR, "rentals.txt")
-_SYSTIME_FILE  = os.path.join(_DATA_DIR, "system_time.txt")
+_ROOT_DIR         = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DATA_DIR         = os.path.join(_ROOT_DIR, "data")
+_USERS_FILE       = os.path.join(_DATA_DIR, "users.txt")
+_BOOKS_FILE       = os.path.join(_DATA_DIR, "books.txt")
+_RENTALS_FILE     = os.path.join(_DATA_DIR, "rentals.txt")
+_SYSTIME_FILE     = os.path.join(_DATA_DIR, "system_time.txt")
+_RESERVATION_FILE = os.path.join(_DATA_DIR, "reservation.txt")
 
 # ─────────────────────────────────────────────────────────
 # 상수
@@ -40,6 +41,7 @@ _FILE_KOREAN_NAME = {
     "books.txt":       "도서 데이터 파일",
     "rentals.txt":     "대여 데이터 파일",
     "system_time.txt": "현재 시간 데이터 파일",
+    "reservation.txt": "예약 데이터 파일",
 }
 
 # ─────────────────────────────────────────────────────────
@@ -267,6 +269,12 @@ def check_environment() -> None:
         fatal_if_missing=False
     )
 
+    # ── reservation.txt (기획서 5.5: 없으면 경고 후 생성) ──
+    _check_file_fatal(
+        _RESERVATION_FILE,
+        fatal_if_missing=False
+    )
+
     # ── 문법 + 의미 규칙 검사 ──
     all_violations += check_syntax_rule()
     all_violations += check_semantic_rule()
@@ -320,7 +328,7 @@ def _check_file_fatal(filepath: str, fatal_if_missing: bool) -> None:
 
 def check_syntax_rule() -> list[ViolationItem]:
     """
-    문법 규칙 검사 (기획서 5.1.1 / 5.2.1 / 5.3.1 / 5.4)
+    문법 규칙 검사 (기획서 5.1.1 / 5.2.1 / 5.3.1 / 5.4 / 5.5)
     위반 항목 목록을 반환한다.
     """
     violations: list[ViolationItem] = []
@@ -328,18 +336,20 @@ def check_syntax_rule() -> list[ViolationItem]:
     violations += _check_syntax_users()
     violations += _check_syntax_books()
     violations += _check_syntax_rentals()
+    violations += _check_syntax_reservations()
     return violations
 
 
 def check_semantic_rule() -> list[ViolationItem]:
     """
-    의미 규칙 검사 (기획서 5.1.2 / 5.2.2 / 5.3.2)
+    의미 규칙 검사 (기획서 5.1.2 / 5.2.2 / 5.3.2 / 5.5)
     위반 항목 목록을 반환한다.
     """
     violations: list[ViolationItem] = []
     violations += _check_semantic_users()
     violations += _check_semantic_books()
     violations += _check_semantic_rentals()
+    violations += _check_semantic_reservations()
     return violations
 
 
@@ -432,12 +442,16 @@ def _check_syntax_books() -> list[ViolationItem]:
             continue
 
         # 카테고리 (기획서 4.3.2, 2차): 쉼표로 구분된 1개 이상의 카테고리.
-        # 각 카테고리는 대문자 알파벳으로만 구성되며 최대 32자.
-        # (2차에서는 도서번호에 카테고리 코드 prefix가 없으므로 코드 일치 검사를 하지 않는다.)
+        # 각 카테고리는 _ALLOWED_CATEGORIES 또는 대문자 알파벳으로만 구성된 32자 이내 문자열.
         category_names = category.split(",")
         category_ok = True
         for cat in category_names:
-            if not cat or len(cat) > 32 or not re.fullmatch(r'[A-Z]+', cat):
+            if not cat or len(cat) > 32:
+                category_ok = False
+                break
+            if cat in _ALLOWED_CATEGORIES:
+                continue
+            if not re.fullmatch(r'[A-Z]+', cat):
                 category_ok = False
                 break
         if not category_ok:
@@ -664,6 +678,108 @@ def _parse_book_ids() -> set[str]:
         if len(parts) >= 5:
             result.add(parts[0].strip())
     return result
+
+
+def _parse_book_codes() -> set[str]:
+    """books.txt 에서 도서코드(prefix) 목록을 파싱한다."""
+    book_ids = _parse_book_ids()
+    return {bid[:6] for bid in book_ids if len(bid) >= 6}
+
+
+def _check_syntax_reservations() -> list[ViolationItem]:
+    """
+    reservation.txt 문법 규칙 (기획서 5.5.1)
+    레코드 형식: <예약번호>/<아이디>/<도서코드>/<예약일>/<자동대출여부> (5필드)
+    """
+    filename = "reservation.txt"
+    ok, lines = _read_lines(_RESERVATION_FILE)
+    if not ok:
+        return []
+
+    violations = []
+    for line_num, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not line:
+            continue
+
+        parts = line.split('/')
+        if len(parts) != 5:
+            violations.append(ViolationItem(filename, line_num, line))
+            continue
+
+        resv_id, uid, book_code, resv_date, status = [p.strip() for p in parts]
+
+        # 예약번호: V + 4자리 숫자 (기획서 4.5.1)
+        if not re.fullmatch(r'V\d{4}', resv_id):
+            violations.append(ViolationItem(filename, line_num, line))
+            continue
+
+        # 아이디: 9자리 숫자 (기획서 4.5.2)
+        if not re.fullmatch(r'\d{9}', uid):
+            violations.append(ViolationItem(filename, line_num, line))
+            continue
+
+        # 도서코드: 6자리 숫자 (기획서 4.5.3)
+        if not re.fullmatch(r'\d{6}', book_code):
+            violations.append(ViolationItem(filename, line_num, line))
+            continue
+
+        # 예약일: 유효한 날짜 (기획서 4.5.4)
+        if _parse_date(resv_date) is None:
+            violations.append(ViolationItem(filename, line_num, line))
+            continue
+
+        # 자동대출여부: PENDING 또는 DONE (기획서 4.5.5)
+        if status not in ("PENDING", "DONE"):
+            violations.append(ViolationItem(filename, line_num, line))
+
+    return violations
+
+
+def _check_semantic_reservations() -> list[ViolationItem]:
+    """
+    reservation.txt 의미 규칙 (기획서 5.5.2)
+    1. 예약번호 중복 없음
+    2. 아이디가 users.txt 에 존재해야 함
+    3. 도서코드가 books.txt 에 존재하는 코드여야 함
+    """
+    filename = "reservation.txt"
+    ok, lines = _read_lines(_RESERVATION_FILE)
+    if not ok:
+        return []
+
+    user_ids = _parse_user_ids()
+    book_codes = _parse_book_codes()
+
+    violations = []
+    seen: dict[str, int] = {}
+
+    for line_num, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not line:
+            continue
+        parts = line.split('/')
+        if len(parts) != 5:
+            continue  # 문법 오류는 이미 처리됨
+
+        resv_id, uid, book_code = [p.strip() for p in parts[:3]]
+
+        # 1. 예약번호 중복
+        if resv_id in seen:
+            violations.append(ViolationItem(filename, line_num, line))
+            continue
+        seen[resv_id] = line_num
+
+        # 2. 아이디가 users.txt에 존재
+        if uid not in user_ids:
+            violations.append(ViolationItem(filename, line_num, line))
+            continue
+
+        # 3. 도서코드가 books.txt에 존재
+        if book_code not in book_codes:
+            violations.append(ViolationItem(filename, line_num, line))
+
+    return violations
 
 
 # ─────────────────────────────────────────────────────────
