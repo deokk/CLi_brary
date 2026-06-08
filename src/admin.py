@@ -19,19 +19,6 @@ _RENTALS_FILE = os.path.join(_DATA_DIR, "rentals.txt")
 _CATEGORY_FILE = os.path.join(_DATA_DIR, "category.txt")
 
 # 상수
-_ALLOWED_CATEGORIES = [
-    "Fiction", "Science", "History", "Technology",
-    "Art", "Philosophy", "Language", "General"
-]
-
-_CATEGORY_CODE_MAP = {
-    "F": "Fiction",    "S": "Science",      "H": "History",
-    "T": "Technology", "A": "Art",          "P": "Philosophy",
-    "L": "Language",   "G": "General",
-}
-
-_CODE_CATEGORY_MAP = {v: k for k, v in _CATEGORY_CODE_MAP.items()}
-
 _FIXED_CATEGORIES = [
     "FICTION", "SCIENCE", "HISTORY", "TECHNOLOGY",
     "ART", "PHILOSOPHY", "LANGUAGE", "GENERAL",
@@ -58,9 +45,8 @@ def _write_lines(filepath: str, lines: list[str]) -> bool:
         return False
 
 def _is_valid_book_id(book_id: str) -> bool:
-    """도서번호 문법 규칙(4.3.1): C333-22 형식"""
-    """2차 확장 (6.5.3): 666666-22 형식"""
-    return bool(re.fullmatch(r'[FSHTAPLG]\d{3}-\d{2}', book_id))
+    """도서번호 문법 규칙(4.3.1, 2차): 666666-22 형식"""
+    return bool(re.fullmatch(r'\d{6}-\d{2}', book_id))
 
 def _is_valid_book_code(book_code: str) -> bool:
     """도서코드 문법 규칙 (6.5.3 확장): 도서번호에서 복본 번호를 제외한 666666형식"""
@@ -192,28 +178,25 @@ def _count_rented_by_user(user_id: str) -> int:
         if r["user_id"] == user_id and r["return_date"] == "NONE"
     )
 
-def _next_book_id(category_code: str, books: list[dict]) -> str | None:
+def _next_book_id(books: list[dict]) -> str | None:
     """
-    해당 카테고리에서 사용 가능한 다음 도서번호를 반환. (6.5.1)
+    사용 가능한 다음 도서번호를 반환. (6.5.1)
     삭제된 번호는 재사용하지 않는다.
-    새 도서(첫 권)는 XX-01로 부여된다.
-    같은 책의 추가 복본은 동일한 카테고리코드+3자리코드에 다른 2자리를 부여한다.
-    이 함수는 "완전히 새로운 도서" 추가에 쓰이며 도서코드(3자리)를 자동 부여한다.
-    000~999 범위를 초과하면 None 반환.
+    새 도서(첫 권)는 000001-01 형식으로 부여된다.
+    이 함수는 "완전히 새로운 도서" 추가에 쓰이며 도서코드(6자리)를 자동 부여한다.
+    999999 범위를 초과하면 None 반환.
     """
-    # 해당 카테고리의 기존 도서코드(3자리) 최댓값 파악
     max_code = 0
     for b in books:
-        if b["id"].startswith(category_code):
-            try:
-                code = int(b["id"][1:4])
-                max_code = max(max_code, code)
-            except ValueError:
-                pass
+        book_id = b["id"]
+        if not _is_valid_book_id(book_id):
+            continue
+        code = int(book_id[:6])
+        max_code = max(max_code, code)
     new_code = max_code + 1
-    if new_code > 999:
+    if new_code > 999999:
         return None
-    return f"{category_code}{new_code:03d}-01"
+    return f"{new_code:06d}-01"
 
 def _generate_book_id_for_info(
     
@@ -226,7 +209,6 @@ def _generate_book_id_for_info(
     books: list[dict],
     exclude_id: str | None = None,
 ) -> tuple[str | None, bool]:
-    category_code = _CODE_CATEGORY_MAP[category]
     comparable_books = [book for book in books if book["id"] != exclude_id]
 
     existing = next(
@@ -240,37 +222,36 @@ def _generate_book_id_for_info(
     )
 
     if existing is not None:
-        book_code_3 = existing["id"][1:4]
-        return _next_copy_id(category_code, book_code_3, books), True
+        return _next_copy_id(existing["id"][:6], books), True
 
-    return _next_book_id(category_code, books), False    
+    return _next_book_id(books), False    
 
 
-def _next_copy_id(category_code: str, book_code_3: str, books: list[dict]) -> str | None:
+def _next_copy_id(book_code: str, books: list[dict]) -> str | None:
     """
-    동일 도서(카테고리코드+3자리코드 동일)의 새 복본 번호를 반환. (4.3.1)
+    동일 도서코드(6자리)의 새 복본 번호를 반환. (4.3.1)
     삭제된 번호는 재사용하지 않는다. 00~99 초과 시 None 반환.
     """
-    prefix = f"{category_code}{book_code_3}-"
+    prefix = f"{book_code}-"
     max_copy = 0
     for b in books:
         if b["id"].startswith(prefix):
             try:
-                copy = int(b["id"][5:7])
+                copy = int(b["id"][7:9])
                 max_copy = max(max_copy, copy)
             except ValueError:
                 pass
     new_copy = max_copy + 1
     if new_copy > 99:
         return None
-    return f"{category_code}{book_code_3}-{new_copy:02d}"
+    return f"{book_code}-{new_copy:02d}"
 
 
 def _has_copies(book: dict, books: list[dict]) -> bool:
-    prefix = book["id"][:4]
+    prefix = book["id"][:6]
 
     for b in books:
-        if b["id"] != book["id"] and b["id"][:4] == prefix:
+        if b["id"] != book["id"] and b["id"][:6] == prefix:
             return True
     return False
 #2차 확장 시작 (카테고리)
@@ -659,9 +640,10 @@ def add_book() -> None:
     category, title, author = [p.strip() for p in parts]
 
     # 카테고리 검증 (4.3.2)
-    if category not in _ALLOWED_CATEGORIES:
+    categories = load_categories()
+    if category not in categories:
         print(f"올바르지 않은 카테고리입니다.")
-        print(f"허용: {', '.join(_ALLOWED_CATEGORIES)}")
+        print(f"허용: {', '.join(categories)}")
         print("--------------------------------------------------")
         return
 
@@ -726,7 +708,7 @@ def delete_book() -> None:
     # ── 문법 규칙 ──
     if not _is_valid_book_id(book_id):
         print("올바르지 않은 도서번호 형식입니다.")
-        print("C333-22 형식으로 입력해주세요. 예) F001-01, S002-03")
+        print("000001-01 형식으로 입력해주세요.")
         print("--------------------------------------------------")
         return
 

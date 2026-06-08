@@ -195,7 +195,7 @@ def rent_book(id, date):
         print("\n--------------------------------------------------")
         book = input("대출할 도서의 도서번호를 입력하세요: ").strip()
 
-        pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
+        pattern = re.compile(r"^[0-9]{6}-[0-9]{2}$")
         if not pattern.fullmatch(book):
             print("옳지 않은 입력입니다.")
             return
@@ -302,7 +302,7 @@ def return_book(id, date):
         print("\n--------------------------------------------------")
         book = input("반납할 도서의 도서번호를 입력하세요: ").strip()
 
-        pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
+        pattern = re.compile(r"^[0-9]{6}-[0-9]{2}$")
         if not pattern.fullmatch(book):
             print("옳지 않은 입력입니다.")
             break
@@ -562,7 +562,7 @@ def extend_book(id, date):
                 break
 
         if target_parts is None:
-            print("대여가 불가능합니다.")
+            print("대출 중인 도서가 아닙니다.")
             continue
 
         target_num, target_user, target_book, target_start, target_end, target_return = target_parts
@@ -571,7 +571,7 @@ def extend_book(id, date):
 
         # 의미 규칙 2: 연체 중이 아니어야 한다. (현재 날짜 > 반납예정일이면 연체)
         if current_date > due_date:
-            print("대여가 불가능합니다.")
+            print("연장이 불가능합니다.")
             continue
 
         # 의미 규칙 3: 연장 횟수가 2회 미만이어야 한다.
@@ -580,12 +580,12 @@ def extend_book(id, date):
         if extend_count < 0:
             extend_count = 0
         if extend_count >= 2:
-            print("대여가 불가능합니다.")
+            print("연장이 불가능합니다.")
             continue
 
         # 의미 규칙 4: 반납 예정일과 시스템 날짜가 7일 이내여야 한다.
         if (due_date - current_date).days > 7:
-            print("대여가 불가능합니다.")
+            print("연장이 불가능합니다.")
             continue
 
         # 모든 조건 통과 → 반납 예정일 7일 연장
