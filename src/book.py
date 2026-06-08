@@ -195,7 +195,7 @@ def rent_book(id, date):
         print("\n--------------------------------------------------")
         book = input("대출할 도서의 도서번호를 입력하세요: ").strip()
 
-        pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
+        pattern = re.compile(r"^[0-9]{6}-[0-9]{2}$")
         if not pattern.fullmatch(book):
             print("옳지 않은 입력입니다.")
             return
@@ -302,7 +302,7 @@ def return_book(id, date):
         print("\n--------------------------------------------------")
         book = input("반납할 도서의 도서번호를 입력하세요: ").strip()
 
-        pattern = re.compile(r"^[FSHTAPLG][0-9]{3}-[0-9]{2}$")
+        pattern = re.compile(r"^[0-9]{6}-[0-9]{2}$")
         if not pattern.fullmatch(book):
             print("옳지 않은 입력입니다.")
             break
