@@ -186,6 +186,71 @@ def update_overdue_ban(id, date):
     with open(_USERS_FILE, "w", encoding="utf-8") as fusers:
         fusers.write("\n".join(updated_users) + "\n")
 
+
+def apply_late_return_ban(id, due_date_str, return_date_str):
+    due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
+    return_date = datetime.strptime(return_date_str, "%Y-%m-%d")
+
+    if return_date <= due_date:
+        return
+
+    late_days = (return_date - due_date).days
+    ban_date = return_date + timedelta(days=late_days)
+    ban_date_str = ban_date.strftime("%Y-%m-%d")
+
+    users_lines = load_users()
+    updated_users = []
+
+    for line in users_lines:
+        parts = line.split("/")
+        if len(parts) != 3:
+            continue
+
+        user_id, user_pw, user_ban = parts
+
+        if user_id == id:
+            if user_ban == "NONE":
+                user_ban = ban_date_str
+            else:
+                old_ban_date = datetime.strptime(user_ban, "%Y-%m-%d")
+                if ban_date > old_ban_date:
+                    user_ban = ban_date_str
+
+        updated_users.append(f"{user_id}/{user_pw}/{user_ban}")
+
+    with open(_USERS_FILE, "w", encoding="utf-8") as fusers:
+        fusers.write("\n".join(updated_users) + "\n")
+
+
+def get_rental_restriction(user_id, system_date, users_lines=None, rentals_lines=None):
+    if users_lines is None:
+        users_lines = load_users()
+    if rentals_lines is None:
+        rentals_lines = load_rentals()
+
+    current_date = datetime.strptime(system_date, "%Y-%m-%d")
+
+    for line in users_lines:
+        parts = line.split("/")
+        if len(parts) != 3:
+            continue
+        u_id, u_pw, u_ban = parts
+        if u_id == user_id and u_ban != "NONE":
+            if current_date <= datetime.strptime(u_ban, "%Y-%m-%d"):
+                return "BANNED", 0
+            break
+
+    rented_count = sum(
+        1 for line in rentals_lines
+        for parts in [line.split("/")]
+        if len(parts) == 6 and parts[1] == user_id and parts[5] == "NONE"
+    )
+    if rented_count >= 3:
+        return "RENTAL_LIMIT", rented_count
+
+    return None, rented_count
+
+
 def rent_book(id, date):
     """도서 대여"""
 
@@ -219,43 +284,13 @@ def rent_book(id, date):
             print("존재하지 않는 도서번호입니다. 다시 입력해주세요.")
             invalid = True
 
-        rentaled_book = 0
-        for line in rentals_lines:
-            parts = line.split("/")
-            if len(parts) != 6:
-                continue
-            rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
-            if rental_user == id and rental_date_return == "NONE":
-                rentaled_book += 1
-
-        if rentaled_book > 2:
+        restriction, _ = get_rental_restriction(id, date, users_lines, rentals_lines)
+        if restriction == "RENTAL_LIMIT":
             print("대여중인 수량이 최대(3권)입니다. 반납 후 시도해주세요.")
             invalid = True
-
-        for line in users_lines:
-            parts = line.split("/")
-            if len(parts) != 3:
-                continue
-            user_id, user_pw, user_ban = parts
-            if user_id == id and user_ban != "NONE":
-                ban_date = datetime.strptime(user_ban, "%Y-%m-%d")
-                current_date = datetime.strptime(date, "%Y-%m-%d")
-                if current_date <= ban_date:
-                    print("현재 대출 정지 중입니다. 대출정지 종료일 이후에 시도해주세요.")
-                    invalid = True
-                else:
-                    updated_users = []
-                    for uline in users_lines:
-                        u_parts = uline.split("/")
-                        if len(u_parts) != 3:
-                            continue
-                        u_id, u_pw, u_ban = u_parts
-                        if u_id == id:
-                            u_ban = "NONE"
-                        updated_users.append(f"{u_id}/{u_pw}/{u_ban}")
-
-                    with open(_USERS_FILE,"w", encoding="utf-8") as fusers2:
-                        fusers2.write("\n".join(updated_users) + "\n")
+        if restriction == "BANNED":
+            print("현재 대출 정지 중입니다. 대출정지 종료일 이후에 시도해주세요.")
+            invalid = True
 
 
         if invalid:
@@ -359,7 +394,7 @@ def return_book(id, date):
             fbooks2.write("\n".join(updated_books) + "\n")
 
         updated_rentals = []
-        datetemp = None
+        returned_due_date = None
 
         for line in rentals_lines:
             parts = line.split("/")
@@ -367,12 +402,15 @@ def return_book(id, date):
                 continue
             rental_num, rental_user, rental_book_id, rental_date_start, rental_date_end, rental_date_return = parts
             if rental_book_id == book and rental_user == id and rental_date_return == "NONE":
-                datetemp = rental_date_end
+                returned_due_date = rental_date_end
                 rental_date_return = date
             updated_rentals.append(f"{rental_num}/{rental_user}/{rental_book_id}/{rental_date_start}/{rental_date_end}/{rental_date_return}")
 
         with open(_RENTALS_FILE,"w", encoding="utf-8") as frentals2:
             frentals2.write("\n".join(updated_rentals) + "\n")
+
+        if returned_due_date is not None:
+            apply_late_return_ban(id, returned_due_date, date)
 
         print(f"[도서번호] {book}")
         print("도서 반납이 완료되었습니다.")
@@ -638,7 +676,6 @@ def reserve_book(user_id, system_date):
     rentals_lines = load_rentals()
     users_lines = load_users()
     reservations = load_reservations()
-    current_date = datetime.strptime(system_date, "%Y-%m-%d")
 
     book_exists = any(
         line.split("/")[0][:6] == book_code
@@ -669,27 +706,12 @@ def reserve_book(user_id, system_date):
         print("--------------------------------------------------")
         return
 
-    is_banned = False
-    for line in users_lines:
-        parts = line.split("/")
-        if len(parts) != 3:
-            continue
-        u_id, u_pw, u_ban = parts
-        if u_id == user_id and u_ban != "NONE":
-            if current_date <= datetime.strptime(u_ban, "%Y-%m-%d"):
-                is_banned = True
-                break
-    if is_banned:
+    restriction, rented_count = get_rental_restriction(user_id, system_date, users_lines, rentals_lines)
+    if restriction == "BANNED":
         print("현재 대출 정지 중입니다. 대출정지 종료일 이후에 시도해주세요.")
         print("--------------------------------------------------")
         return
-
-    rented_count = sum(
-        1 for line in rentals_lines
-        for parts in [line.split("/")]
-        if len(parts) == 6 and parts[1] == user_id and parts[5] == "NONE"
-    )
-    if rented_count >= 3:
+    if restriction == "RENTAL_LIMIT":
         print("대여중인 수량이 최대(3권)입니다. 반납 후 시도해주세요.")
         print("--------------------------------------------------")
         return
@@ -750,24 +772,8 @@ def process_login_reservation(user_id, system_date):
     books_lines = load_books()
     current_date = datetime.strptime(system_date, "%Y-%m-%d")
 
-    is_banned = False
-    for line in users_lines:
-        parts = line.split("/")
-        if len(parts) != 3:
-            continue
-        u_id, u_pw, u_ban = parts
-        if u_id == user_id and u_ban != "NONE":
-            if current_date <= datetime.strptime(u_ban, "%Y-%m-%d"):
-                is_banned = True
-                break
-
-    rented_count = sum(
-        1 for line in rentals_lines
-        for parts in [line.split("/")]
-        if len(parts) == 6 and parts[1] == user_id and parts[5] == "NONE"
-    )
-
-    if is_banned or rented_count >= 3:
+    restriction, rented_count = get_rental_restriction(user_id, system_date, users_lines, rentals_lines)
+    if restriction is not None:
         cancelled_count = len(user_pendings)
         reservations = [
             r for r in reservations
@@ -853,24 +859,8 @@ def _process_reservation_after_return(book_id, system_date):
     for r in pending:
         target_user = r["user_id"]
 
-        is_banned = False
-        for line in users_lines:
-            parts = line.split("/")
-            if len(parts) != 3:
-                continue
-            u_id, u_pw, u_ban = parts
-            if u_id == target_user and u_ban != "NONE":
-                if current_date <= datetime.strptime(u_ban, "%Y-%m-%d"):
-                    is_banned = True
-                    break
-
-        rented_count = sum(
-            1 for line in rentals_lines
-            for parts in [line.split("/")]
-            if len(parts) == 6 and parts[1] == target_user and parts[5] == "NONE"
-        )
-
-        if is_banned or rented_count >= 3:
+        restriction, rented_count = get_rental_restriction(target_user, system_date, users_lines, rentals_lines)
+        if restriction is not None:
             continue
 
         new_books = []
