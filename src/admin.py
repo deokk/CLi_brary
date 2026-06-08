@@ -45,7 +45,7 @@ def _write_lines(filepath: str, lines: list[str]) -> bool:
         return False
 
 def _is_valid_book_id(book_id: str) -> bool:
-    """도서번호 문법 규칙(4.3.1, 2차): 666666-22 형식"""
+    """도서번호 문법 규칙 (2차 확장 6.5.3): 6자리숫자-2자리숫자 형식"""
     return bool(re.fullmatch(r'\d{6}-\d{2}', book_id))
 
 def _is_valid_book_code(book_code: str) -> bool:
