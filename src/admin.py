@@ -58,9 +58,8 @@ def _write_lines(filepath: str, lines: list[str]) -> bool:
         return False
 
 def _is_valid_book_id(book_id: str) -> bool:
-    """도서번호 문법 규칙(4.3.1): C333-22 형식"""
-    """2차 확장 (6.5.3): 666666-22 형식"""
-    return bool(re.fullmatch(r'[FSHTAPLG]\d{3}-\d{2}', book_id))
+    """도서번호 문법 규칙 (2차 확장 6.5.3): 6자리숫자-2자리숫자 형식"""
+    return bool(re.fullmatch(r'\d{6}-\d{2}', book_id))
 
 def _is_valid_book_code(book_code: str) -> bool:
     """도서코드 문법 규칙 (6.5.3 확장): 도서번호에서 복본 번호를 제외한 666666형식"""
