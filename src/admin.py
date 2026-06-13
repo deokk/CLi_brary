@@ -557,13 +557,13 @@ def merge_category() -> None:
     # books.txt 갱신: category1, category2를 merged로 치환 + 중복 제거
     books = _get_books()
     for book in books:
-        categories = book["category"].split(",")
-        new_categories = []
-        for c in categories:
+        categories2 = book["category"].split(",")
+        new_categories2 = []
+        for c in categories2:
             replaced = merged if c == category1 or c == category2 else c
-            if replaced not in new_categories:
-                new_categories.append(replaced)
-        book["category"] = ",".join(new_categories)
+            if replaced not in new_categories2:
+                new_categories2.append(replaced)
+        book["category"] = ",".join(new_categories2)
     if not _save_books(books):
         print("오류: 도서 파일 저장에 실패했습니다.")
         return
