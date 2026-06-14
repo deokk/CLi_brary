@@ -144,6 +144,59 @@ def _get_saved_system_time() -> Optional[date]:
         return None
     return _parse_date(lines[0].strip())
 
+def _check_category_file() -> None:
+    """
+    category.txt 가 없으면 경고 후 생성한다.
+    생성 시 고정 카테고리 8개를 첫 줄에 쓰고,
+    books.txt 에 존재하지만 고정 카테고리에 없는 카테고리를
+    줄별로 추가한다.
+    """
+    fname = "category.txt"
+    korean_name = _FILE_KOREAN_NAME.get(fname, fname)
+
+    if not os.path.exists(_CATEGORY_FILE):
+        print(f"경고: {korean_name}이 존재하지 않습니다.")
+        try:
+            os.makedirs(_DATA_DIR, exist_ok=True)
+
+            # 고정 카테고리 (첫 줄)
+            fixed_line = "FICTION/SCIENCE/HISTORY/TECHNOLOGY/ART/PHILOSOPHY/LANGUAGE/GENERAL"
+
+            # books.txt 에서 추가 카테고리 수집
+            extra_categories = []
+            ok, lines = _read_lines(_BOOKS_FILE)
+            if ok:
+                for raw in lines:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    parts = line.split('/')
+                    if len(parts) < 2:
+                        continue
+                    # 2번째 필드: 카테고리 (쉼표로 구분될 수 있음)
+                    for cat in parts[1].strip().split(','):
+                        cat = cat.strip()
+                        if cat and cat not in _ALLOWED_CATEGORIES and cat not in extra_categories:
+                            extra_categories.append(cat)
+
+            with open(_CATEGORY_FILE, "w", encoding="utf-8") as f:
+                f.write(fixed_line + "\n")
+                for cat in extra_categories:
+                    f.write(cat + "\n")
+
+            print(f"data\\에 {korean_name}을 생성하였습니다.")
+            print(_CATEGORY_FILE)
+
+        except Exception:
+            print(f"오류: data\\에 {korean_name}을 생성하지 못했습니다. 프로그램을 종료합니다.")
+            sys.exit(1)
+
+    # 권한 확인
+    if not os.access(_CATEGORY_FILE, os.R_OK | os.W_OK):
+        print(f"오류: {_CATEGORY_FILE}에 대한 입출력 권한이 없습니다.")
+        print("프로그램을 종료합니다.")
+        sys.exit(1)
+
 
 # ─────────────────────────────────────────────────────────
 # 공개 API - clibrary.py 에서 직접 호출하는 함수들
@@ -272,10 +325,7 @@ def check_environment() -> None:
     )
 
     # ── category.txt (2차 확장: 없으면 경고 후 생성) ──
-    _check_file_fatal(
-        _CATEGORY_FILE,
-        fatal_if_missing=False
-    )
+    _check_category_file()
 
     # ── 문법 + 의미 규칙 검사 ──
     all_violations += check_syntax_rule()
