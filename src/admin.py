@@ -365,11 +365,13 @@ def update_book_category(matched_books: list[dict]) -> None:
     cond1_fail = old_category not in current_categories
     # 의미 규칙 2: 수정 후 카테고리가 category.txt에 존재
     cond2_fail = new_category not in categories
+    # 의미 규칙 3: 수정 후 카테고리가 해당 도서에 이미 존재하는지 확인
+    cond3_fail = new_category in current_categories
 
     if cond1_fail:
         print("수정하고자 하는 해당 도서의 카테고리가 해당 도서에 존재하지 않습니다.")
-    if cond2_fail:
-        print("입력받은 카테고리가 존재하지 않는 카테고리입니다. [카테고리를 편집]에서 카테고리를 추가한 다음 다시 시도해 주세요.")
+    if cond2_fail or cond3_fail:
+        print("입력받은 카테고리가 이미 해당 도서에 존재하거나 존재하지 않는 카테고리입니다. [카테고리를 편집]에서 카테고리를 추가한 다음 다시 시도해 주세요.")
     if cond1_fail or cond2_fail:
         _book_category_success = False
         return
